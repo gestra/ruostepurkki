@@ -12,20 +12,12 @@ pub enum ServerCertError {
     CertChanged
 }
 
-pub fn create_db() {
-    let conn = open_db().unwrap();
-    conn.execute(
-        "CREATE TABLE certificate (
-                  host            TEXT PRIMARY KEY,
-                  digest          BLOB
-                  )",
-        rusqlite::params![],
-    ).unwrap();
-}
-
 fn open_db() -> Option<rusqlite::Connection> {
     match rusqlite::Connection::open("/tmp/ruostepurkki.db") {
-        Ok(c) => Some(c),
+        Ok(c) => {
+            c.execute("CREATE TABLE IF NOT EXISTS certificate (host TEXT PRIMARY KEY, digest BLOB);", rusqlite::params![]).unwrap();
+            Some(c)
+        },
         Err(_) => None
     }
 }
