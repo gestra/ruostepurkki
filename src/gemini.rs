@@ -257,6 +257,17 @@ pub fn parse_gemini_doc(page: &str) -> Vec<GeminiLine> {
                 alt: None
             });
         }
+        else if line.len() >= 1 && &line[0..1] == ">" {
+            let mut s = String::new();
+            for c in line[1..].chars() {
+                s.push(c);
+            }
+            lines.push(GeminiLine {
+                linetype: LineType::Quote,
+                main: Some(s),
+                alt: None
+            });
+        }
         else {
             lines.push(GeminiLine {
                 linetype: LineType::Text,
