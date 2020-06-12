@@ -10,6 +10,9 @@ use url::Url;
 
 extern crate mime;
 
+extern crate regex;
+use regex::Regex;
+
 use crate::certificates;
 
 #[derive(Clone, Copy, PartialEq, Debug)]
@@ -100,9 +103,16 @@ pub struct GeminiResponse {
 pub fn parse_gemini_doc(page: &str) -> Vec<GeminiLine> {
     let mut lines = Vec::<GeminiLine>::new();
     let mut preformatted = false;
+
+    let link_regex = Regex::new(r"^=>\s*(\S+)(?:\s+(.*))?").unwrap();
+    let preformat_regex = Regex::new(r"^```").unwrap();
+    let list_regex = Regex::new(r"^\* (.*)").unwrap();
+    let heading_regex = Regex::new(r"^(#+)(?:\s*)?(.*)").unwrap();
+    let quote_regex = Regex::new(r"^>(.*)").unwrap();
+
     for line in page.lines() {
         if preformatted {
-            if line.len() >= 3 && &line[0..3] == "```" {
+            if preformat_regex.is_match(line) {
                 preformatted = false;
                 continue;
             }
@@ -115,53 +125,14 @@ pub fn parse_gemini_doc(page: &str) -> Vec<GeminiLine> {
                 continue;
             }
         }
-        else if line.len() >= 3 && &line[0..3] == "```"{
+        else if preformat_regex.is_match(line) {
             preformatted = true;
             continue;
         }
-        else if line.len() >= 2 && &line[0..2] == "=>" {
-            let mut url = String::new();
-            let mut name = String::new();
-            let mut url_started = false;
-            let mut url_passed = false;
-            let mut name_started = false;
-
-            for c in line[2..].chars() {
-                if !url_started {
-                    if c.is_whitespace() {
-                        continue;
-                    }
-                    else {
-                        url_started = true;
-                        url.push(c);
-                        continue;
-                    }
-                }
-                if url_started && !url_passed {
-                    if c.is_whitespace() {
-                        url_passed = true;
-                        continue;
-                    }
-                    else {
-                        url.push(c);
-                        continue;
-                    }
-                }
-                if url_passed && !name_started {
-                    if c.is_whitespace() {
-                        continue;
-                    }
-                    else {
-                        name_started = true;
-                        name.push(c);
-                        continue;
-                    }
-                }
-                if name_started {
-                    name.push(c);
-                    continue;
-                }
-            }
+        else if link_regex.is_match(line) {
+            let groups = link_regex.captures(line).unwrap();
+            let url = groups.get(1).map_or("".to_string(), |u| u.as_str().to_string());
+            let name = groups.get(2).map_or("".to_string(), |u| u.as_str().to_string());
 
             let alt;
             if name == "" {
@@ -177,26 +148,9 @@ pub fn parse_gemini_doc(page: &str) -> Vec<GeminiLine> {
                 alt: alt
             }); 
         }
-        else if line.len() >= 2 && &line[0..2] == "* " {
-            let mut item = String::new();
-            let mut started = false;
-
-            for c in line[2..].chars() {
-                if started {
-                    item.push(c);
-                    continue;
-                }
-                else {
-                    if c.is_whitespace() {
-                        continue;
-                    }
-                    else {
-                        item.push(c);
-                        started = true;
-                        continue;
-                    }
-                }
-            }
+        else if list_regex.is_match(line) {
+            let groups = list_regex.captures(line).unwrap();
+            let item = groups.get(1).map_or("".to_string(), |u| u.as_str().to_string());
 
             lines.push(GeminiLine {
                 linetype: LineType::ListItem,
@@ -204,44 +158,10 @@ pub fn parse_gemini_doc(page: &str) -> Vec<GeminiLine> {
                 alt: None
             });
         }
-        else if line.len() >= 1 && &line[0..1] == "#" {
-            let mut s = String::new();
-            let mut level = 0;
-            let mut hashes_over = false;
-            let mut heading_started = false;
-
-            for c in line.chars() {
-                if !hashes_over {
-                    if c == '#' {
-                        level += 1;
-                        if level == 3 {
-                            hashes_over = true;
-                        }
-                        continue;
-                    }
-                    else {
-                        hashes_over = true;
-                        if !c.is_whitespace() {
-                            s.push(c);
-                        }
-                        continue;
-                    }
-                }
-                else if !heading_started {
-                    if c.is_whitespace() {
-                        continue;
-                    }
-                    else {
-                        heading_started = true;
-                        s.push(c);
-                        continue;
-                    }
-                }
-                else {
-                    s.push(c);
-                    continue;
-                }
-            }
+        else if heading_regex.is_match(line) {
+            let groups = heading_regex.captures(line).unwrap();
+            let hashes = groups.get(1).unwrap().as_str();
+            let level = hashes.len();
 
             let linetype = match level {
                 1 => LineType::Heading1,
@@ -250,17 +170,18 @@ pub fn parse_gemini_doc(page: &str) -> Vec<GeminiLine> {
                 _ => LineType::Text
             };
 
+            let s = groups.get(2).map_or("".to_string(), |u| u.as_str().to_string());
+
             lines.push(GeminiLine {
                 linetype: linetype,
                 main: Some(s),
                 alt: None
             });
         }
-        else if line.len() >= 1 && &line[0..1] == ">" {
-            let mut s = String::new();
-            for c in line[1..].chars() {
-                s.push(c);
-            }
+        else if quote_regex.is_match(line) {
+            let groups = quote_regex.captures(line).unwrap();
+            let s = groups.get(1).map_or("".to_string(), |u| u.as_str().to_string());
+
             lines.push(GeminiLine {
                 linetype: LineType::Quote,
                 main: Some(s),
