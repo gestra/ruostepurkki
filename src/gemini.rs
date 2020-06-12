@@ -97,7 +97,6 @@ pub struct GeminiResponse {
     pub contents: Option<Vec<u8>>
 }
 
-
 pub fn parse_gemini_doc(page: &str) -> Vec<GeminiLine> {
     let mut lines = Vec::<GeminiLine>::new();
     let mut preformatted = false;
@@ -283,14 +282,31 @@ pub fn parse_gemini_doc(page: &str) -> Vec<GeminiLine> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    
     #[test]
     fn parse_textlines() {
         let t = "This is a text line\n\
-                 this is one too.";
+                 this is one too.\n\
+                 日本語";
         let r = parse_gemini_doc(&t);
-        assert_eq!(r.len(), 2);
-        for line in r {
+        assert_eq!(r.len(), 3);
+        for (i, line) in r.into_iter().enumerate() {
             assert!(line.linetype == LineType::Text);
+            match i {
+                0 => {
+                    assert!(line.main == Some("This is a text line".to_string()));
+                    assert!(line.alt == None);
+                },
+                1 => {
+                    assert!(line.main == Some("this is one too.".to_string()));
+                    assert!(line.alt == None);
+                },
+                2 => {
+                    assert!(line.main == Some("日本語".to_string()));
+                    assert!(line.alt == None);
+                },
+                _ => {}
+            }
         }
     }
 
@@ -298,7 +314,7 @@ mod tests {
     fn parse_linklines() {
         let t = "=> gemini://example.com Link to example\n\
                  =>        gemini://another.site       This one has some more whitespace\n\
-                 =>gemini://third.one A third one\n\
+                 =>gemini://third.one 漢字\n\
                  =>gemini://no.name";
         let r = parse_gemini_doc(&t);
 
@@ -316,7 +332,7 @@ mod tests {
                 }
                 2 => {
                     assert!(line.main == Some("gemini://third.one".to_string()));
-                    assert!(line.alt == Some("A third one".to_string()));
+                    assert!(line.alt == Some("漢字".to_string()));
                 }
                 3 => {
                     assert!(line.main == Some("gemini://no.name".to_string()));
@@ -332,7 +348,7 @@ mod tests {
         let t = "Normal line here\n\
                  ```\n\
                  This is preformatted\n\
-                 ```\n\
+                 ```This shouldn't appear in the result\n\
                  This is not";
         let r = parse_gemini_doc(&t);
 
@@ -364,7 +380,7 @@ mod tests {
     fn parse_heading() {
         let t = "# Level 1 heading\n\
                  ##Level 2 heading\n\
-                 ### Level 3 heading";
+                 ### レベル 3 ヘディング";
         let r = parse_gemini_doc(&t);
 
         assert_eq!(r.len(), 3);
@@ -382,7 +398,7 @@ mod tests {
                 }
                 2 => {
                     assert!(line.linetype == LineType::Heading3);
-                    assert!(line.main == Some("Level 3 heading".to_string()));
+                    assert!(line.main == Some("レベル 3 ヘディング".to_string()));
                     assert!(line.alt == None);
                 }
                 _ => {}
@@ -395,7 +411,7 @@ mod tests {
         let t = "* First item\n\
                  * Second item\n\
                  *This is not a list item\n\
-                 * A new list";
+                 * これは new list";
         let r = parse_gemini_doc(&t);
 
         assert_eq!(r.len(), 4);
@@ -418,7 +434,7 @@ mod tests {
                 }
                 3 => {
                     assert!(line.linetype == LineType::ListItem);
-                    assert!(line.main == Some("A new list".to_string()));
+                    assert!(line.main == Some("これは new list".to_string()));
                     assert!(line.alt == None);
                 }
                 _ => {}
@@ -430,10 +446,11 @@ mod tests {
     fn parse_quote() {
         let t = ">2020\n\
                  >quotes as standard\n\
-                 >  what about whitespace?";
+                 >  what about whitespace?\n\
+                 >錆";
         let r = parse_gemini_doc(&t);
 
-        assert_eq!(r.len(), 3);
+        assert_eq!(r.len(), 4);
         for (i, line) in r.into_iter().enumerate() {
             assert!(line.linetype == LineType::Quote);
             match i {
@@ -447,6 +464,10 @@ mod tests {
                 }
                 2 => {
                     assert!(line.main == Some("  what about whitespace?".to_string()));
+                    assert!(line.alt == None);
+                }
+                3 => {
+                    assert!(line.main == Some("錆".to_string()));
                     assert!(line.alt == None);
                 }
                 _ => {}
