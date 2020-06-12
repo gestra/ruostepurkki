@@ -1,5 +1,5 @@
 extern crate openssl;
-use openssl::ssl::{SslMethod, SslConnector, SslVerifyMode, SslStream};
+use openssl::ssl::{SslMethod, SslConnector, SslVerifyMode};
 
 use std::io::{Read, Write};
 use std::net::TcpStream;
@@ -73,7 +73,7 @@ fn statuscode_from_u8(i: u8) -> Option<StatusCode> {
 pub enum LineType {
     Text,
     Link,
-    PreFormatted,
+    Preformatted,
     Heading1,
     Heading2,
     Heading3,
@@ -117,7 +117,7 @@ pub fn parse_gemini_doc(page: &str) -> Vec<GeminiLine> {
             }
             else {
                 lines.push( GeminiLine {
-                    linetype: LineType::PreFormatted,
+                    linetype: LineType::Preformatted,
                     main: Some(line.clone().to_string()),
                     alt: None
                 });
@@ -282,7 +282,7 @@ mod tests {
                     assert!(line.alt == None);
                 }
                 1 => {
-                    assert!(line.linetype == LineType::PreFormatted);
+                    assert!(line.linetype == LineType::Preformatted);
                     assert!(line.main == Some("This is preformatted".to_string()));
                     assert!(line.alt == None);
                 }
@@ -460,8 +460,6 @@ pub fn make_request(request_url: &str) -> Result<GeminiResponse, &str> {
         Err(_) => return Err("Certificate error")
     }
 
-
-
     let mut req = request_url.clone().to_string();
     req.push_str("\r\n");
     let req = req.into_bytes();
@@ -481,12 +479,8 @@ pub fn make_request(request_url: &str) -> Result<GeminiResponse, &str> {
 
     let meta = &header.meta.unwrap();
 
-    let mime = &meta.parse::<mime::Mime>().unwrap();
-
     let mut content_buffer = Vec::<u8>::new();
     stream.read_to_end(&mut content_buffer).unwrap();
-
-    let page = String::from_utf8(content_buffer.clone()).unwrap();
 
     let response = GeminiResponse {
         status: header.status,
@@ -507,8 +501,7 @@ pub fn print_gemini_doc(lines: &Vec<GeminiLine>) {
             LineType::Heading1 => println!("Heading1: {}", line.main.as_ref().unwrap()),
             LineType::Heading2 => println!("Heading2: {}", line.main.as_ref().unwrap()),
             LineType::Heading3 => println!("Heading3: {}", line.main.as_ref().unwrap()),
-            LineType::PreFormatted => println!("Preformatted: {}", line.main.as_ref().unwrap()),
-            _ => println!("Unchecked line here")
+            LineType::Preformatted => println!("Preformatted: {}", line.main.as_ref().unwrap()),
         };
     }
 }

@@ -2,8 +2,6 @@ extern crate openssl;
 use openssl::ssl::{SslStream};
 
 use std::net::TcpStream;
-use std::path::Path;
-use std::fs::File;
 
 use rusqlite;
 
