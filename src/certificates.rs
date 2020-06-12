@@ -58,11 +58,9 @@ pub fn check_cert(stream: &SslStream<TcpStream>, host: &str) -> Result<(), (Serv
     
     let known_digest: Vec<u8> = match cert_in_db(host) {
         Some(v) => {
-            println!("Known cert is {} bytes long", v.len());
             v.iter().cloned().collect()
         }
         None => {
-            println!("Certificate not found in db");
             let d = cert.digest(openssl::hash::MessageDigest::sha256()).unwrap();
             insert_into_db(host, &d).unwrap();
             // Would be better to just use digest directly

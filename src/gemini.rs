@@ -73,7 +73,6 @@ fn statuscode_from_u8(i: u8) -> Option<StatusCode> {
 pub enum LineType {
     Text,
     Link,
-    ToggleFormatting,
     PreFormatted,
     Heading1,
     Heading2,
@@ -401,7 +400,7 @@ mod tests {
 
 
 
-fn parse_response_header(res: &String) -> Result<ResponseHeader, &str> {
+fn parse_response_header(res: &str) -> Result<ResponseHeader, &str> {
     let mut iter = res.split_whitespace();
     let codestr = match iter.next() {
         Some(c) => c,
@@ -416,7 +415,6 @@ fn parse_response_header(res: &String) -> Result<ResponseHeader, &str> {
         Ok(c) => c,
         Err(_e) => { return Err("Error parsing code"); }
     };
-    println!("Got status code {}", codeint);
     let code = match statuscode_from_u8(codeint) {
         Some(c) => c,
         None => { return Err("Status code not known"); }
@@ -427,7 +425,7 @@ fn parse_response_header(res: &String) -> Result<ResponseHeader, &str> {
 
 
 
-pub fn make_request(request_url: &String) -> Result<GeminiResponse, &str> {
+pub fn make_request(request_url: &str) -> Result<GeminiResponse, &str> {
     let url = match Url::parse(request_url) {
         Ok(u) => { u },
         Err(_e) => { return Err("Failed parsing URL"); }
@@ -451,11 +449,6 @@ pub fn make_request(request_url: &String) -> Result<GeminiResponse, &str> {
         }
     };
 
-    println!("Parsed URL {}", request_url);
-    println!("Scheme: {}", scheme);
-    println!("Host: {}", host);
-    println!("Port: {}", port);
-
     let mut builder = SslConnector::builder(SslMethod::tls()).unwrap();
     builder.set_verify(SslVerifyMode::NONE);
     let connector = builder.build();
@@ -469,7 +462,7 @@ pub fn make_request(request_url: &String) -> Result<GeminiResponse, &str> {
 
 
 
-    let mut req = request_url.clone();
+    let mut req = request_url.clone().to_string();
     req.push_str("\r\n");
     let req = req.into_bytes();
     stream.write_all(&req).unwrap();
@@ -480,9 +473,6 @@ pub fn make_request(request_url: &String) -> Result<GeminiResponse, &str> {
     let header = buf[..read].to_vec();
     let headerstr = String::from_utf8(header).unwrap();
 
-    println!("Header length: {}", headerstr.len());
-    println!("Header: {}", headerstr);
-
     if read == 1029 && buf[1027..] != [13, 10] {
         return Err("Faulty header received");
     }
@@ -491,18 +481,12 @@ pub fn make_request(request_url: &String) -> Result<GeminiResponse, &str> {
 
     let meta = &header.meta.unwrap();
 
-    println!("Status code: {} , meta: {}", header.status as u8, &meta);
     let mime = &meta.parse::<mime::Mime>().unwrap();
-
-    if mime.type_() == "text" && mime.subtype() == "gemini" {
-        println!("Gemini text here");
-    }
 
     let mut content_buffer = Vec::<u8>::new();
     stream.read_to_end(&mut content_buffer).unwrap();
 
     let page = String::from_utf8(content_buffer.clone()).unwrap();
-    println!("{}", page);
 
     let response = GeminiResponse {
         status: header.status,
@@ -511,4 +495,20 @@ pub fn make_request(request_url: &String) -> Result<GeminiResponse, &str> {
     };
 
     return Ok(response);
+}
+
+pub fn print_gemini_doc(lines: &Vec<GeminiLine>) {
+    for line in lines {
+        match line.linetype {
+            LineType::Text => println!("{}", line.main.as_ref().unwrap()),
+            LineType::Link => println!("Link: {} {}", line.main.as_ref().unwrap(), line.alt.as_ref().unwrap()),
+            LineType::Quote => println!(">{}", line.main.as_ref().unwrap()),
+            LineType::ListItem => println!("* {}", line.main.as_ref().unwrap()),
+            LineType::Heading1 => println!("Heading1: {}", line.main.as_ref().unwrap()),
+            LineType::Heading2 => println!("Heading2: {}", line.main.as_ref().unwrap()),
+            LineType::Heading3 => println!("Heading3: {}", line.main.as_ref().unwrap()),
+            LineType::PreFormatted => println!("Preformatted: {}", line.main.as_ref().unwrap()),
+            _ => println!("Unchecked line here")
+        };
+    }
 }
