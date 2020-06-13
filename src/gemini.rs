@@ -199,6 +199,112 @@ pub fn parse_gemini_doc(page: &str) -> Vec<GeminiLine> {
     lines
 }
 
+fn parse_response_header(res: &str) -> Result<ResponseHeader, &str> {
+    let mut iter = res.split_whitespace();
+    let codestr = match iter.next() {
+        Some(c) => c,
+        None => { return Err("Error parsing header"); }
+    };
+    let meta = match iter.next() {
+        Some(m) => m.to_string(),
+        None => { return Err("Error parsing header"); }
+    };
+
+    let codeint = match codestr.parse::<u8>() {
+        Ok(c) => c,
+        Err(_e) => { return Err("Error parsing code"); }
+    };
+    let code = match statuscode_from_u8(codeint) {
+        Some(c) => c,
+        None => { return Err("Status code not known"); }
+    };
+
+    return Ok(ResponseHeader{status: code, meta: Some(meta)});
+}
+
+
+
+pub fn make_request(request_url: &str) -> Result<GeminiResponse, &str> {
+    let url = match Url::parse(request_url) {
+        Ok(u) => { u },
+        Err(_e) => { return Err("Failed parsing URL"); }
+    };
+
+    let scheme = url.scheme();
+    if scheme != "gemini" {
+        return Err("Scheme not supported");
+    }
+
+    let host = match url.host_str() {
+        Some(h) => h,
+        None => { return Err("Did not find hostname"); }
+    };
+
+    let port = match url.port() {
+        Some(p) => p,
+        None => match scheme {
+            "gemini" => 1965,
+            _ => {return Err("No port known for given scheme")}
+        }
+    };
+
+    let mut builder = SslConnector::builder(SslMethod::tls()).unwrap();
+    builder.set_verify(SslVerifyMode::NONE);
+    let connector = builder.build();
+    let stream = TcpStream::connect(format!("{}:{}", host, port)).unwrap();
+    let mut stream = connector.connect(host, stream).unwrap();
+
+    match certificates::check_cert(&stream, &host) {
+        Ok(_) => (),
+        Err(_) => return Err("Certificate error")
+    }
+
+    let mut req = request_url.clone().to_string();
+    req.push_str("\r\n");
+    let req = req.into_bytes();
+    stream.write_all(&req).unwrap();
+
+    let mut buf = vec![0u8; 1029];
+    let read = stream.read(&mut buf).unwrap();
+
+    let header = buf[..read].to_vec();
+    let headerstr = String::from_utf8(header).unwrap();
+
+    if read == 1029 && buf[1027..] != [13, 10] {
+        return Err("Faulty header received");
+    }
+
+    let header = parse_response_header(&headerstr).unwrap();
+
+    let meta = &header.meta.unwrap();
+
+    let mut content_buffer = Vec::<u8>::new();
+    stream.read_to_end(&mut content_buffer).unwrap();
+
+    let response = GeminiResponse {
+        status: header.status,
+        meta: Some(meta.to_string()),
+        contents: Some(content_buffer)
+    };
+
+    return Ok(response);
+}
+
+pub fn print_gemini_doc(lines: &Vec<GeminiLine>) {
+    for line in lines {
+        match line.linetype {
+            LineType::Text => println!("{}", line.main.as_ref().unwrap()),
+            LineType::Link => println!("Link: {} {}", line.main.as_ref().unwrap(), line.alt.as_ref().unwrap()),
+            LineType::Quote => println!(">{}", line.main.as_ref().unwrap()),
+            LineType::ListItem => println!("* {}", line.main.as_ref().unwrap()),
+            LineType::Heading1 => println!("Heading1: {}", line.main.as_ref().unwrap()),
+            LineType::Heading2 => println!("Heading2: {}", line.main.as_ref().unwrap()),
+            LineType::Heading3 => println!("Heading3: {}", line.main.as_ref().unwrap()),
+            LineType::Preformatted => println!("Preformatted: {}", line.main.as_ref().unwrap()),
+        };
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -395,113 +501,4 @@ mod tests {
         }
     }
     
-}
-
-
-
-
-fn parse_response_header(res: &str) -> Result<ResponseHeader, &str> {
-    let mut iter = res.split_whitespace();
-    let codestr = match iter.next() {
-        Some(c) => c,
-        None => { return Err("Error parsing header"); }
-    };
-    let meta = match iter.next() {
-        Some(m) => m.to_string(),
-        None => { return Err("Error parsing header"); }
-    };
-
-    let codeint = match codestr.parse::<u8>() {
-        Ok(c) => c,
-        Err(_e) => { return Err("Error parsing code"); }
-    };
-    let code = match statuscode_from_u8(codeint) {
-        Some(c) => c,
-        None => { return Err("Status code not known"); }
-    };
-
-    return Ok(ResponseHeader{status: code, meta: Some(meta)});
-}
-
-
-
-pub fn make_request(request_url: &str) -> Result<GeminiResponse, &str> {
-    let url = match Url::parse(request_url) {
-        Ok(u) => { u },
-        Err(_e) => { return Err("Failed parsing URL"); }
-    };
-
-    let scheme = url.scheme();
-    if scheme != "gemini" {
-        return Err("Scheme not supported");
-    }
-
-    let host = match url.host_str() {
-        Some(h) => h,
-        None => { return Err("Did not find hostname"); }
-    };
-
-    let port = match url.port() {
-        Some(p) => p,
-        None => match scheme {
-            "gemini" => 1965,
-            _ => {return Err("No port known for given scheme")}
-        }
-    };
-
-    let mut builder = SslConnector::builder(SslMethod::tls()).unwrap();
-    builder.set_verify(SslVerifyMode::NONE);
-    let connector = builder.build();
-    let stream = TcpStream::connect(format!("{}:{}", host, port)).unwrap();
-    let mut stream = connector.connect(host, stream).unwrap();
-
-    match certificates::check_cert(&stream, &host) {
-        Ok(_) => (),
-        Err(_) => return Err("Certificate error")
-    }
-
-    let mut req = request_url.clone().to_string();
-    req.push_str("\r\n");
-    let req = req.into_bytes();
-    stream.write_all(&req).unwrap();
-
-    let mut buf = vec![0u8; 1029];
-    let read = stream.read(&mut buf).unwrap();
-
-    let header = buf[..read].to_vec();
-    let headerstr = String::from_utf8(header).unwrap();
-
-    if read == 1029 && buf[1027..] != [13, 10] {
-        return Err("Faulty header received");
-    }
-
-    let header = parse_response_header(&headerstr).unwrap();
-
-    let meta = &header.meta.unwrap();
-
-    let mut content_buffer = Vec::<u8>::new();
-    stream.read_to_end(&mut content_buffer).unwrap();
-
-    let response = GeminiResponse {
-        status: header.status,
-        meta: Some(meta.to_string()),
-        contents: Some(content_buffer)
-    };
-
-    return Ok(response);
-}
-
-pub fn print_gemini_doc(lines: &Vec<GeminiLine>) {
-    for line in lines {
-        match line.linetype {
-            LineType::Text => println!("{}", line.main.as_ref().unwrap()),
-            LineType::Link => println!("Link: {} {}", line.main.as_ref().unwrap(), line.alt.as_ref().unwrap()),
-            LineType::Quote => println!(">{}", line.main.as_ref().unwrap()),
-            LineType::ListItem => println!("* {}", line.main.as_ref().unwrap()),
-            LineType::Heading1 => println!("Heading1: {}", line.main.as_ref().unwrap()),
-            LineType::Heading2 => println!("Heading2: {}", line.main.as_ref().unwrap()),
-            LineType::Heading3 => println!("Heading3: {}", line.main.as_ref().unwrap()),
-            LineType::Preformatted => println!("Preformatted: {}", line.main.as_ref().unwrap()),
-        };
-    }
 }
