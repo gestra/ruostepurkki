@@ -10,39 +10,24 @@ pub enum ServerCertError {
     CertChanged
 }
 
-fn open_db() -> Option<rusqlite::Connection> {
-    match rusqlite::Connection::open("/tmp/ruostepurkki.db") {
-        Ok(c) => {
-            c.execute("CREATE TABLE IF NOT EXISTS certificate (host TEXT PRIMARY KEY, digest BLOB);", rusqlite::params![]).unwrap();
-            Some(c)
-        },
-        Err(_) => None
-    }
+fn open_db() -> rusqlite::Result<rusqlite::Connection> {
+    let c = rusqlite::Connection::open("/tmp/ruostepurkki.db")?;
+    c.execute("CREATE TABLE IF NOT EXISTS certificate (host TEXT PRIMARY KEY, digest BLOB);", rusqlite::NO_PARAMS)?;
+    Ok(c)
 }
 
-fn insert_into_db(host: &str, digest: &[u8]) -> Result<(), ()> {
-    let conn: rusqlite::Connection = match open_db() {
-        Some(c) => c,
-        None => { return Err(()); }
-    };
-
-    match conn.execute("INSERT INTO certificate (host, digest) VALUES (?, ?)", rusqlite::params![host, digest]) {
-        Ok(_) => Ok(()),
-        Err(_) => Err(())
-    }
+fn insert_into_db(host: &str, digest: &[u8]) -> rusqlite::Result<()> {
+    let conn = open_db()?;
+    conn.execute("INSERT INTO certificate (host, digest) VALUES (?, ?)", rusqlite::params![host, digest])?;
+    Ok(())
 }
 
-fn cert_in_db(host: &str) -> Option<Vec<u8>> {
-    let conn: rusqlite::Connection = match open_db() {
-        Some(c) => c,
-        None => { return None; }
-    };
+fn cert_in_db(host: &str) -> rusqlite::Result<Option<Vec<u8>>> {
+    let conn = open_db()?;
 
     let stmt = "SELECT digest FROM certificate WHERE host=(?)";
-    match conn.query_row(stmt, &[&host], |r| r.get(0)) {
-        Ok(r) => r,
-        Err(_) => None
-    }
+    let result = conn.query_row(stmt, &[&host], |r| r.get(0))?;
+    Ok(Some(result))
 }
 
 pub fn check_cert(stream: &SslStream<TcpStream>, host: &str) -> Result<(), (ServerCertError, Option<String>)> {
@@ -55,15 +40,19 @@ pub fn check_cert(stream: &SslStream<TcpStream>, host: &str) -> Result<(), (Serv
     let digest: Vec<u8> = cert.digest(openssl::hash::MessageDigest::sha256()).unwrap().as_ref().iter().cloned().collect();
     
     let known_digest: Vec<u8> = match cert_in_db(host) {
-        Some(v) => {
-            v.iter().cloned().collect()
-        }
-        None => {
-            let d = cert.digest(openssl::hash::MessageDigest::sha256()).unwrap();
-            insert_into_db(host, &d).unwrap();
-            // Would be better to just use digest directly
-            //cert_in_db(host).unwrap()
-            d.as_ref().iter().cloned().collect()
+        Ok(Some(v)) => v,
+        Ok(None) => {
+            return Err((ServerCertError::CertChanged, Some("Something weird must have happened".to_string())));
+        },
+        Err(err) => {
+            if err == rusqlite::Error::QueryReturnedNoRows {
+                insert_into_db(host, &digest).unwrap();
+                return Ok(());
+            }
+            else {
+                println!("Error: {}", err);
+                return Err((ServerCertError::CertChanged, Some(err.to_string())));
+            }
         }
     };
 
