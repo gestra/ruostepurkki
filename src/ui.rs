@@ -65,13 +65,82 @@ pub fn main_ui() {
                     continue;
                 }
             };
-            if r.status == gemini::StatusCode::Success {
-                let meta = r.meta.unwrap_or("".to_string());
-                let mime = &meta.parse::<mime::Mime>().unwrap();
-                if mime.type_() == "text" && mime.subtype() == "gemini" {
-                    let doc = gemini::parse_gemini_doc(&String::from_utf8(r.contents.unwrap()).unwrap());
-                    gemini::print_gemini_doc(&doc);
-                }
+            match r.status {
+                gemini::StatusCode::Input => {
+                    println!("Server asked for user input. Not yet implemented");
+                },
+                gemini::StatusCode::SensitiveInput => {
+                    println!("Server asked for sensitive user input. Not yet implemented");
+                },
+                gemini::StatusCode::Success => {
+                    let meta = r.meta.unwrap_or("".to_string());
+                    let mime = &meta.parse::<mime::Mime>().unwrap();
+                    if mime.type_() == "text" && mime.subtype() == "gemini" {
+                        let doc = gemini::parse_gemini_doc(&String::from_utf8(r.contents.unwrap()).unwrap());
+                        gemini::print_gemini_doc(&doc);
+                    }
+                },
+                gemini::StatusCode::SuccessEndCert => {
+                    println!("End of client certificate session. Not yet implemented");
+                    let meta = r.meta.unwrap_or("".to_string());
+                    let mime = &meta.parse::<mime::Mime>().unwrap();
+                    if mime.type_() == "text" && mime.subtype() == "gemini" {
+                        let doc = gemini::parse_gemini_doc(&String::from_utf8(r.contents.unwrap()).unwrap());
+                        gemini::print_gemini_doc(&doc);
+                    }
+                },
+                gemini::StatusCode::TemporaryFailure => {
+                    println!("Temporary failure {}: Temporary failure", gemini::StatusCode::TemporaryFailure as u8);
+                },
+                gemini::StatusCode::ServerUnavailable => {
+                    println!("Temporary failure {}: Server unavailable", gemini::StatusCode::ServerUnavailable as u8);
+                },
+                gemini::StatusCode::CgiError => {
+                    println!("Temporary failure {}: CGI error", gemini::StatusCode::CgiError as u8);
+                },
+                gemini::StatusCode::ProxyError => {
+                    println!("Temporary failure {}: Proxy error", gemini::StatusCode::ProxyError as u8);
+                },
+                gemini::StatusCode::SlowDown => {
+                    println!("Temporary failure {}: Slow down", gemini::StatusCode::SlowDown as u8);
+                },
+                gemini::StatusCode::PermanentFailure => {
+                    println!("Permanent failure {}: Temporary failure", gemini::StatusCode::PermanentFailure as u8);
+                },
+                gemini::StatusCode::NotFound => {
+                    println!("Permanent failure {}: Not found", gemini::StatusCode::NotFound as u8);
+                },
+                gemini::StatusCode::Gone => {
+                    println!("Permanent failure {}: Gone", gemini::StatusCode::Gone as u8);
+                },
+                gemini::StatusCode::ProxyReqRefused => {
+                    println!("Permanent failure {}: Proxy request refused", gemini::StatusCode::ProxyReqRefused as u8);
+                },
+                gemini::StatusCode::BadRequest => {
+                    println!("Permanent failure {}: Bad request", gemini::StatusCode::BadRequest as u8);
+                },
+                gemini::StatusCode::ClientCertRequired => {
+                    println!("Client certificate required. Not yet implemented.");
+                },
+                gemini::StatusCode::TransientCertRequested => {
+                    println!("Trancient certificate requested. Not yet implemented.");
+                },
+                gemini::StatusCode::AuthorizedCertRequired => {
+                    println!("Authorized certificate requested. Not yet implemented.");
+                },
+                gemini::StatusCode::CertNotAccepted => {
+                    println!("Certificate not accepted. Not yet implemented.");
+                },
+                gemini::StatusCode::FutureCertRejected => {
+                    println!("Certificate not accepted because its validity start date is in the future. Not yet implemented.");
+                },
+                gemini::StatusCode::ExpiredCertRejected => {
+                    println!("Expired certificate rejected. Not yet implemented.");
+                },
+                gemini::StatusCode::RedirectPerm | gemini::StatusCode::RedirectTemp => {
+                    // Redirect responses should never reach this far
+                    assert!(false);
+                },
             }
 
         }

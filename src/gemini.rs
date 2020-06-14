@@ -18,6 +18,7 @@ use crate::certificates;
 #[derive(Clone, Copy, PartialEq, Debug)]
 pub enum StatusCode {
     Input                   = 10,
+    SensitiveInput          = 11,
     Success                 = 20,
     SuccessEndCert          = 21,
     RedirectTemp            = 30,
@@ -43,6 +44,7 @@ pub enum StatusCode {
 fn statuscode_from_u8(i: u8) -> Option<StatusCode> {
     let code = match i {
         10 => Some(StatusCode::Input),
+        11 => Some(StatusCode::SensitiveInput),
         20 => Some(StatusCode::Success),
         21 => Some(StatusCode::SuccessEndCert),
         30 => Some(StatusCode::RedirectTemp),
