@@ -239,27 +239,27 @@ pub fn is_valid_gemini_url(url: &str) -> bool {
     };
 }
 
-pub fn make_request(request_url: &str) -> Result<GeminiResponse, &str> {
+pub fn make_request(request_url: &str) -> Result<GeminiResponse, String> {
     let url = match Url::parse(request_url) {
         Ok(u) => { u },
-        Err(_e) => { return Err("Failed parsing URL"); }
+        Err(_e) => { return Err("Failed parsing URL".to_string()); }
     };
 
     let scheme = url.scheme();
     if scheme != "gemini" {
-        return Err("Scheme not supported");
+        return Err("Scheme not supported".to_string());
     }
 
     let host = match url.host_str() {
         Some(h) => h,
-        None => { return Err("Did not find hostname"); }
+        None => { return Err("Did not find hostname".to_string()); }
     };
 
     let port = match url.port() {
         Some(p) => p,
         None => match scheme {
             "gemini" => 1965,
-            _ => {return Err("No port known for given scheme")}
+            _ => {return Err("No port known for given scheme".to_string())}
         }
     };
 
@@ -268,13 +268,13 @@ pub fn make_request(request_url: &str) -> Result<GeminiResponse, &str> {
     let connector = builder.build();
     let stream = match TcpStream::connect(format!("{}:{}", host, port)) {
         Ok(s) => s,
-        Err(_) => { return Err("Unable to connect"); }
+        Err(_) => { return Err("Unable to connect".to_string()); }
     };
     let mut stream = connector.connect(host, stream).unwrap();
 
     match certificates::check_cert(&stream, &host) {
         Ok(_) => (),
-        Err(_) => return Err("Certificate error")
+        Err(_) => return Err("Certificate error".to_string())
     }
 
     let mut req = request_url.clone().to_string();
@@ -289,19 +289,27 @@ pub fn make_request(request_url: &str) -> Result<GeminiResponse, &str> {
     let headerstr = String::from_utf8(header).unwrap();
 
     if read == 1029 && buf[1027..] != [13, 10] {
-        return Err("Faulty header received");
+        return Err("Faulty header received".to_string());
     }
 
     let header = parse_response_header(&headerstr).unwrap();
 
-    let meta = &header.meta.unwrap();
+    let meta = header.meta;
+
+    if header.status == StatusCode::RedirectPerm || header.status == StatusCode::RedirectTemp {
+        if meta != None {
+            let newurl = meta.unwrap();
+            println!("Redirecting to {}", newurl);
+            return make_request(&newurl);
+        }
+    }
 
     let mut content_buffer = Vec::<u8>::new();
     stream.read_to_end(&mut content_buffer).unwrap();
 
     let response = GeminiResponse {
         status: header.status,
-        meta: Some(meta.to_string()),
+        meta: meta,
         contents: Some(content_buffer)
     };
 
