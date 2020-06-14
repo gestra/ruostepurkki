@@ -222,7 +222,22 @@ fn parse_response_header(res: &str) -> Result<ResponseHeader, &str> {
     return Ok(ResponseHeader{status: code, meta: Some(meta)});
 }
 
+pub fn is_valid_gemini_url(url: &str) -> bool {
+    let url = match Url::parse(url) {
+        Ok(u) => u,
+        Err(_) => { return false }
+    };
 
+    let scheme = url.scheme();
+    if scheme != "gemini" {
+        return false;
+    }
+
+    match url.host_str() {
+        Some(_) => {return true},
+        None => { return false; }
+    };
+}
 
 pub fn make_request(request_url: &str) -> Result<GeminiResponse, &str> {
     let url = match Url::parse(request_url) {
@@ -251,7 +266,10 @@ pub fn make_request(request_url: &str) -> Result<GeminiResponse, &str> {
     let mut builder = SslConnector::builder(SslMethod::tls()).unwrap();
     builder.set_verify(SslVerifyMode::NONE);
     let connector = builder.build();
-    let stream = TcpStream::connect(format!("{}:{}", host, port)).unwrap();
+    let stream = match TcpStream::connect(format!("{}:{}", host, port)) {
+        Ok(s) => s,
+        Err(_) => { return Err("Unable to connect"); }
+    };
     let mut stream = connector.connect(host, stream).unwrap();
 
     match certificates::check_cert(&stream, &host) {
