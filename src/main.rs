@@ -4,5 +4,7 @@ mod ui;
 extern crate mime;
 
 fn main() {
-    ui::main_ui();
+    if let Ok(mut ui) = ui::TextUI::init() {
+        ui.main_loop();
+    }
 }
