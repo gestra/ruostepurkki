@@ -333,6 +333,25 @@ pub fn print_gemini_doc(lines: &Vec<GeminiLine>) {
     }
 }
 
+pub fn gemini_doc_as_str(lines: &Vec<GeminiLine>) -> String {
+    let mut s = String::new();
+
+    for line in lines {
+        match line.linetype {
+            LineType::Text => s += &format!("{}\n", line.main.as_ref().unwrap()),
+            LineType::Link => s += &format!("Link: {} {}\n", line.main.as_ref().unwrap(), line.alt.as_ref().unwrap()),
+            LineType::Quote => s += &format!(">{}\n", line.main.as_ref().unwrap()),
+            LineType::ListItem => s += &format!("* {}\n", line.main.as_ref().unwrap()),
+            LineType::Heading1 => s += &format!("Heading1: {}\n", line.main.as_ref().unwrap()),
+            LineType::Heading2 => s += &format!("Heading2: {}\n", line.main.as_ref().unwrap()),
+            LineType::Heading3 => s += &format!("Heading3: {}\n", line.main.as_ref().unwrap()),
+            LineType::Preformatted => s += &format!("Preformatted: {}\n", line.main.as_ref().unwrap()),
+        };
+    }
+
+    s
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
