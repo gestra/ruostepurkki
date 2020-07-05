@@ -219,6 +219,19 @@ impl ContentContainer {
         }
     }
 
+    pub fn set_contents_text(&mut self, text: &str) {
+        let mut contents = Vec::<PrintableLine>::new();
+        for l in text.lines() {
+            contents.push(PrintableLine {
+                s: l.to_string(),
+                wrapped: false
+            });
+        }
+
+        self.lines = contents;
+        self.render();
+    }
+
     pub fn set_contents_gemini(&mut self, lines: Vec<document::Line>) {
         let mut contents = Vec::<PrintableLine>::new();
         for l in lines {
@@ -269,7 +282,9 @@ impl ContentContainer {
 pub struct TextUI {
     top_line: String,
     container: ContentContainer,
-    bottom_line: String
+    bottom_line: String,
+
+    quit: bool
 }
 
 impl Drop for TextUI {
@@ -296,127 +311,208 @@ impl TextUI {
         Ok(TextUI {
             top_line: String::new(),
             container: container,
-            bottom_line: String::new()
+            bottom_line: String::new(),
+            quit: false
         })
     }
 
     pub fn main_loop(&mut self) -> std::result::Result<(), String> {
         loop {
+            if self.quit == true {
+                return Ok(());
+            }
+
             match read().unwrap() {
                 Event::Resize(width, height) => {
-                    self.container.resize(width, height);
-    
-                    let scroll = self.container.scroll_pos();
-                    self.bottom_line = format!("Scroll: {}, {}", scroll.0, scroll.1);
-    
-                    self.redraw_window()?;
+                    self.handle_resize_event(width, height)?;
                 },
                 Event::Key(event) => {
-                    match event.code {
-                        KeyCode::Char('h') => {
-                            self.container.scroll_left();
-                            let scroll = self.container.scroll_pos();
-                            self.bottom_line = format!("Scroll: {}, {}", scroll.0, scroll.1);
-                            self.redraw_window()?;
-                        },
-                        KeyCode::Char('l') => {
-                            self.container.scroll_right();
-                            let scroll = self.container.scroll_pos();
-                            self.bottom_line = format!("Scroll: {}, {}", scroll.0, scroll.1);
-                            self.redraw_window()?;
-                        },
-                        KeyCode::Char('j') => {
-                            self.container.scroll_down();
-                            let scroll = self.container.scroll_pos();
-                            self.bottom_line = format!("Scroll: {}, {}", scroll.0, scroll.1);
-                            self.redraw_window()?;
-                        },
-                        KeyCode::Char('k') => {
-                            self.container.scroll_up();
-                            let scroll = self.container.scroll_pos();
-                            self.bottom_line = format!("Scroll: {}, {}", scroll.0, scroll.1);
-                            self.redraw_window()?;
-                        },
-                        KeyCode::Char(' ') => {
-                            let raw_command = get_command_from_user().unwrap();
-                            let mut print_error = false;
-                            let mut error_msg = String::new();
-
-                            match parse_command(&raw_command) {
-                                Some(Command::Go(url)) => {
-                                    let r = match protocol::make_request(&url) {
-                                        Ok(r) => r,
-                                        Err(e) => {
-                                            self.bottom_line = e;
-                                            self.redraw_window()?;
-                                            continue;
-                                        }
-                                    };
-                                    match r {
-                                        Response::Success(mime, contents) => {
-                                            /*
-                                            if !document::is_gemini_doc(&mime) {
-                                                self.bottom_line = "Not a gemini document".to_string();
-                                                self.redraw_window()?;
-                                                continue;
-                                            }*/
-                                            let raw = String::from_utf8(contents).unwrap();
-                                            let doc = document::parse_gemini_doc(&raw);
-                                            self.container.set_contents_gemini(doc);
-
-                                            self.redraw_window()?;
-                                        },
-                                        _ => {}
-                                    };
-                                },
-
-                                Some(Command::Quit) => {
-                                    return Ok(());
-                                },
-
-                                Some(Command::Unknown(c)) => {
-                                    print_error = true;
-                                    error_msg = format!("Unknown command: {}", c);
-                                },
-
-                                None => {
-
-                                }
-                            }
-
-                            //self.bottom_line = format!("Received command: {}", raw_command);
-                            if print_error == true {
-                                self.bottom_line = error_msg;
-                            }
-                            self.redraw_window()?;
-                        },
-                        KeyCode::Esc => {
-                            return Ok(());
-                        },
-                        _ => {}
-                    }
+                    self.handle_key_event(event)?;
                 },
                 _ => {}
             }
+ 
         }
     }
 
+    fn handle_resize_event(&mut self, width: u16, height: u16) -> std::result::Result<(), String> {
+        self.container.resize(width, height);
+    
+        let scroll = self.container.scroll_pos();
+        self.bottom_line = format!("Scroll: {}, {}", scroll.0, scroll.1);
+
+        self.redraw_window()?;
+
+        Ok(())
+    }
+
+    fn handle_key_event(&mut self, event: KeyEvent) -> std::result::Result<(), String> {
+        match event.code {
+            KeyCode::Char('h') => {
+                self.scroll('l')?;
+            },
+            KeyCode::Char('l') => {
+                self.scroll('r')?;
+            },
+            KeyCode::Char('j') => {
+                self.scroll('d')?;
+            },
+            KeyCode::Char('k') => {
+                self.scroll('u')?;
+            },
+            KeyCode::Char(' ') => {
+                self.user_command_input()?;
+            },
+            KeyCode::Esc => {
+                self.quit = true;
+                return Ok(());
+            },
+            _ => {}
+        }
+
+        Ok(())
+    }
+
+    fn user_command_input(&mut self) -> std::result::Result<(), String> {
+        let raw_command = get_command_from_user().unwrap();
+        let mut print_error = false;
+        let mut error_msg = String::new();
+
+        match parse_command(&raw_command) {
+            Some(Command::Go(url)) => {
+                self.command_go(&url)?;
+            },
+
+            Some(Command::Quit) => {
+                self.quit = true;
+                return Ok(());
+            },
+
+            Some(Command::Unknown(c)) => {
+                print_error = true;
+                error_msg = format!("Unknown command: {}", c);
+            },
+
+            None => {
+
+            }
+        }
+
+        //self.bottom_line = format!("Received command: {}", raw_command);
+        if print_error == true {
+            self.bottom_line = error_msg;
+        }
+        self.redraw_window()?;
+
+        Ok(())
+    }
+
+    fn command_go(&mut self, url: &str) -> std::result::Result<(), String> {
+        let r = match protocol::make_request(&url) {
+            Ok(r) => r,
+            Err(e) => {
+                self.bottom_line = e;
+                self.redraw_window()?;
+                return Ok(());
+            }
+        };
+        match r {
+            Response::Success(mime, contents) => {
+                if !document::is_text_doc(&mime) {
+                    self.bottom_line = format!("Not a text document: '{}'", mime);
+                    self.redraw_window()?;
+                    return Ok(());
+                }
+
+                let raw = String::from_utf8(contents).unwrap();
+
+                if !document::is_gemini_doc(&mime) {
+                    self.container.set_contents_text(&raw);
+                } else {
+                    let doc = document::parse_gemini_doc(&raw);
+                    self.container.set_contents_gemini(doc);
+                }
+                self.redraw_window()?;
+            },
+            Response::RedirectPerm(url) | Response::RedirectTemp(url) => {
+                match self.ask_user_yes_no(&format!("Follow redirection? -> {}", url), None) {
+                    Ok(true) => { return self.command_go(&url); }
+                    Ok(false) => {}
+                    Err(e) => { return Err(e); }
+                }
+            }
+            _ => {}
+        };
+        Ok(())
+    }
+
+    fn ask_user_yes_no(&mut self, question: &str, default: Option<bool>) -> std::result::Result<bool, String> {
+        match default {
+            None => {}
+            Some(_) => { return Err("Default not yet implemented".to_string()); }
+        }
+
+        let size = terminal::size().unwrap();
+        self.bottom_line = question.to_string();
+        queue!(
+            stdout(),
+            MoveTo(0, size.1),
+            Print(&self.bottom_line)
+        ).unwrap();
+        stdout().flush().unwrap();
+
+        loop {
+            match read().unwrap() {
+                Event::Key(event) => {
+                    match event.code {
+                        KeyCode::Char('y') => {
+                            return Ok(true);
+                        }
+                        KeyCode::Char('n') | KeyCode::Esc => {
+                            return Ok(false);
+                        }
+                        _ => {}
+                    }
+                }
+                _ => {}
+            }
+        }
+
+    }
+
+    fn scroll(&mut self, direction: char) -> std::result::Result<(), String> {
+        match direction {
+            'l' => self.container.scroll_left(),
+            'r' => self.container.scroll_right(),
+            'u' => self.container.scroll_up(),
+            'd' => self.container.scroll_down(),
+            _ => { return Err(format!("Unknown direction given: {}", direction)); }
+        }
+
+        let scroll = self.container.scroll_pos();
+        self.bottom_line = format!("Scroll: {}, {}", scroll.0, scroll.1);
+        self.redraw_window()?;
+
+        Ok(())
+    }
+
     fn redraw_window(&self) -> std::result::Result<(), String> {
+        let error_message = "Error when clearing window".to_string();
         match execute!(stdout(), terminal::Clear(ClearType::All)) {
             Ok(_) => {},
-            Err(_) => { return Err("Error when clearing window".to_string()); }
+            Err(_) => { return Err(error_message); }
         }
         match self.print_top_row() {
             Ok(_) => {},
-            Err(_) => { return Err("Error when printing top row".to_string()); }
+            Err(_) => { return Err(error_message); }
         }
         match self.container.print() {
             Ok(_) => {},
-            Err(_) => { return Err("Error when printing container".to_string()); }
+            Err(_) => { return Err(error_message); }
         }
         match self.print_bottom_row() {
             Ok(_) => {},
-            Err(_) => { return Err("Error when printing bottom row".to_string()); }
+            Err(_) => { return Err(error_message); }
         }
         Ok(())
     }

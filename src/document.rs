@@ -184,6 +184,15 @@ pub fn is_gemini_doc(mime: &str) -> bool {
     m.type_() == "text" && m.subtype() == "gemini"
 }
 
+pub fn is_text_doc(mime: &str) -> bool {
+    let m: mime::Mime = match mime.parse() {
+        Ok(m) => m,
+        Err(_) => {return false;}
+    };
+
+    m.type_() == "text"
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -354,6 +363,15 @@ mod tests {
                 }
             }
         }
+    }
+
+    #[test]
+    fn gemini_mime() {
+        let geminimime = "text/gemini";
+        let other = "text/plain";
+
+        assert_eq!(is_gemini_doc(geminimime), true);
+        assert_eq!(is_gemini_doc(other), false);
     }
     
 }
