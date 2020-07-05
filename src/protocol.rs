@@ -171,15 +171,22 @@ pub fn make_request(request_url: &str) -> Result<Response, String> {
         Err(_) => { return Err("Error reading header from stream".to_string()); }
     };
 
-    let header = buf[..read].to_vec();
+    if read == 1029 && buf[1027..] != [13, 10] {
+        return Err("Too long header received".to_string());
+    }
+
+    let header;
+    // Strip out CRLF from end of header
+    if read > 2 && buf[read-2] == '\r' as u8 && buf[read-1] == '\n' as u8 {
+        header = buf[..read-2].to_vec();
+    } else {
+        header = buf[..read].to_vec();
+    }
+
     let headerstr = match String::from_utf8(header) {
         Ok(s) => s,
         Err(_) => { return Err("Could not parse header as UTF-8".to_string()); }
     };
-
-    if read == 1029 && buf[1027..] != [13, 10] {
-        return Err("Faulty header received".to_string());
-    }
 
     let header = match parse_response_header(&headerstr) {
         Ok(h) => h,
