@@ -138,10 +138,6 @@ pub enum Response {
     ExpiredCertRejected {
         info: Option<String>
     },
-
-    UnknownResponse {
-        info: Option<String>
-    }
 }
 
 fn parse_response_header(res: &str) -> Result<ResponseHeader, &str> {
@@ -155,8 +151,8 @@ fn parse_response_header(res: &str) -> Result<ResponseHeader, &str> {
     };
 
     let meta;
-    if res.len() > 2 {
-        meta = Some(res[2..].to_string());
+    if res.len() > 3 {
+        meta = Some(res[3..].to_string());
     } else {
         meta = None;
     }
@@ -261,7 +257,7 @@ pub fn make_request(request_url: &str) -> Result<Response, String> {
                 None => String::new()
             };
 
-            response = Response::Input {
+            response = Response::SensitiveInput {
                 prompt: meta
             };
         },
@@ -382,4 +378,37 @@ pub fn make_request(request_url: &str) -> Result<Response, String> {
     }
 
     return Ok(response);
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn parse_header() {
+        let headerstring = "10".to_string();
+        let header = parse_response_header(&headerstring).unwrap();
+        assert!(header.status == StatusCode::Input);
+        assert!(header.meta == None);
+
+        let headerstring = "10 Password please".to_string();
+        let header = parse_response_header(&headerstring).unwrap();
+        assert!(header.status == StatusCode::Input);
+        assert!(header.meta == Some("Password please".to_string()));
+
+        let headerstring = "11 Secret password please".to_string();
+        let header = parse_response_header(&headerstring).unwrap();
+        assert!(header.status == StatusCode::SensitiveInput);
+        assert!(header.meta == Some("Secret password please".to_string()));
+
+        let headerstring = "20 text/gemini".to_string();
+        let header = parse_response_header(&headerstring).unwrap();
+        assert!(header.status == StatusCode::Success);
+        assert!(header.meta == Some("text/gemini".to_string()));
+
+        let headerstring = "30 gemini://new.example.com/".to_string();
+        let header = parse_response_header(&headerstring).unwrap();
+        assert!(header.status == StatusCode::RedirectTemp);
+        assert!(header.meta == Some("gemini://new.example.com/".to_string()));
+    }
 }
