@@ -23,6 +23,17 @@ use unicode_width::UnicodeWidthStr;
 extern crate regex;
 use regex::Regex;
 
+use crate::protocol;
+use protocol::{
+    StatusCode,
+    Response
+};
+
+use crate::document;
+use document::{
+    Line,
+};
+
 enum Command {
     Go(String),
     Quit,
@@ -207,6 +218,52 @@ impl ContentContainer {
             }
         }
     }
+
+    pub fn set_contents_gemini(&mut self, lines: Vec<document::Line>) {
+        let mut contents = Vec::<PrintableLine>::new();
+        for l in lines {
+            match l {
+                Line::Preformatted(s) => {
+                    contents.push(PrintableLine {
+                        s: s,
+                        wrapped: false
+                    });
+                },
+
+                Line::Link(url, alt) => {
+                    match alt {
+                        Some(a) => {
+                            contents.push(PrintableLine {
+                                s: format!("=> {}", a),
+                                wrapped: false
+                            });
+                        },
+                        None => {
+                            contents.push(PrintableLine {
+                                s: format!("=> {}", url),
+                                wrapped: false
+                            });
+                        }
+                    }
+                }
+
+                Line::Text(s) |
+                Line::Heading1(s) |
+                Line::Heading2(s) |
+                Line::Heading3(s) |
+                Line::Quote(s) |
+                Line::ListItem(s) => {
+                    contents.push(PrintableLine {
+                        s: s,
+                        wrapped: false
+                    });
+                }
+            }
+        }
+
+        self.lines = contents;
+        self.render();
+    }
 }
 
 pub struct TextUI {
@@ -243,7 +300,7 @@ impl TextUI {
         })
     }
 
-    pub fn main_loop(&mut self) {
+    pub fn main_loop(&mut self) -> std::result::Result<(), String> {
         loop {
             match read().unwrap() {
                 Event::Resize(width, height) => {
@@ -252,7 +309,7 @@ impl TextUI {
                     let scroll = self.container.scroll_pos();
                     self.bottom_line = format!("Scroll: {}, {}", scroll.0, scroll.1);
     
-                    self.redraw_window();
+                    self.redraw_window()?;
                 },
                 Event::Key(event) => {
                     match event.code {
@@ -260,25 +317,25 @@ impl TextUI {
                             self.container.scroll_left();
                             let scroll = self.container.scroll_pos();
                             self.bottom_line = format!("Scroll: {}, {}", scroll.0, scroll.1);
-                            self.redraw_window();
+                            self.redraw_window()?;
                         },
                         KeyCode::Char('l') => {
                             self.container.scroll_right();
                             let scroll = self.container.scroll_pos();
                             self.bottom_line = format!("Scroll: {}, {}", scroll.0, scroll.1);
-                            self.redraw_window();
+                            self.redraw_window()?;
                         },
                         KeyCode::Char('j') => {
                             self.container.scroll_down();
                             let scroll = self.container.scroll_pos();
                             self.bottom_line = format!("Scroll: {}, {}", scroll.0, scroll.1);
-                            self.redraw_window();
+                            self.redraw_window()?;
                         },
                         KeyCode::Char('k') => {
                             self.container.scroll_up();
                             let scroll = self.container.scroll_pos();
                             self.bottom_line = format!("Scroll: {}, {}", scroll.0, scroll.1);
-                            self.redraw_window();
+                            self.redraw_window()?;
                         },
                         KeyCode::Char(' ') => {
                             let raw_command = get_command_from_user().unwrap();
@@ -287,15 +344,41 @@ impl TextUI {
 
                             match parse_command(&raw_command) {
                                 Some(Command::Go(url)) => {
+                                    let r = match protocol::make_request(&url) {
+                                        Ok(r) => r,
+                                        Err(e) => {
+                                            self.bottom_line = e;
+                                            self.redraw_window()?;
+                                            continue;
+                                        }
+                                    };
+                                    match r {
+                                        Response::Success { mime, contents } => {
+                                            /*
+                                            if !document::is_gemini_doc(&mime) {
+                                                self.bottom_line = "Not a gemini document".to_string();
+                                                self.redraw_window()?;
+                                                continue;
+                                            }*/
+                                            let raw = String::from_utf8(contents).unwrap();
+                                            let doc = document::parse_gemini_doc(&raw);
+                                            self.container.set_contents_gemini(doc);
 
-                                }
+                                            self.redraw_window()?;
+                                        },
+                                        _ => {}
+                                    };
+                                },
+
                                 Some(Command::Quit) => {
-                                    break;
-                                }
+                                    return Ok(());
+                                },
+
                                 Some(Command::Unknown(c)) => {
                                     print_error = true;
                                     error_msg = format!("Unknown command: {}", c);
-                                }
+                                },
+
                                 None => {
 
                                 }
@@ -305,26 +388,36 @@ impl TextUI {
                             if print_error == true {
                                 self.bottom_line = error_msg;
                             }
-                            self.redraw_window().unwrap();
+                            self.redraw_window()?;
                         },
                         KeyCode::Esc => {
-                            break;
+                            return Ok(());
                         },
                         _ => {}
                     }
                 },
-                _ => {
-                    break;
-                }
+                _ => {}
             }
         }
     }
 
-    fn redraw_window(&self) -> Result<()> {
-        execute!(stdout(), terminal::Clear(ClearType::All))?;
-        self.print_top_row()?;
-        self.container.print()?;
-        self.print_bottom_row()?;
+    fn redraw_window(&self) -> std::result::Result<(), String> {
+        match execute!(stdout(), terminal::Clear(ClearType::All)) {
+            Ok(_) => {},
+            Err(_) => { return Err("Error when clearing window".to_string()); }
+        }
+        match self.print_top_row() {
+            Ok(_) => {},
+            Err(_) => { return Err("Error when printing top row".to_string()); }
+        }
+        match self.container.print() {
+            Ok(_) => {},
+            Err(_) => { return Err("Error when printing container".to_string()); }
+        }
+        match self.print_bottom_row() {
+            Ok(_) => {},
+            Err(_) => { return Err("Error when printing bottom row".to_string()); }
+        }
         Ok(())
     }
 

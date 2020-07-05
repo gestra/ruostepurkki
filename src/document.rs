@@ -1,10 +1,3 @@
-extern crate openssl;
-use openssl::ssl::{SslMethod, SslConnector, SslVerifyMode};
-
-use std::io::{Read, Write};
-use std::net::TcpStream;
-//use std::sync::Arc;
-
 extern crate url;
 use url::Url;
 
@@ -13,63 +6,6 @@ extern crate mime;
 extern crate regex;
 use regex::Regex;
 
-use crate::certificates;
-
-#[derive(Clone, Copy, PartialEq, Debug)]
-pub enum StatusCode {
-    Input                   = 10,
-    SensitiveInput          = 11,
-    Success                 = 20,
-    SuccessEndCert          = 21,
-    RedirectTemp            = 30,
-    RedirectPerm            = 31,
-    TemporaryFailure        = 40,
-    ServerUnavailable       = 41,
-    CgiError                = 42,
-    ProxyError              = 43,
-    SlowDown                = 44,
-    PermanentFailure        = 50,
-    NotFound                = 51,
-    Gone                    = 52,
-    ProxyReqRefused         = 53,
-    BadRequest              = 59,
-    ClientCertRequired      = 60,
-    TransientCertRequested  = 61,
-    AuthorizedCertRequired  = 62,
-    CertNotAccepted         = 63,
-    FutureCertRejected      = 64,
-    ExpiredCertRejected     = 65
-}
-
-fn statuscode_from_u8(i: u8) -> Option<StatusCode> {
-    let code = match i {
-        10 => Some(StatusCode::Input),
-        11 => Some(StatusCode::SensitiveInput),
-        20 => Some(StatusCode::Success),
-        21 => Some(StatusCode::SuccessEndCert),
-        30 => Some(StatusCode::RedirectTemp),
-        31 => Some(StatusCode::RedirectPerm),
-        40 => Some(StatusCode::TemporaryFailure),
-        41 => Some(StatusCode::ServerUnavailable),
-        42 => Some(StatusCode::CgiError),
-        43 => Some(StatusCode::ProxyError),
-        44 => Some(StatusCode::SlowDown),
-        50 => Some(StatusCode::PermanentFailure),
-        51 => Some(StatusCode::NotFound),
-        52 => Some(StatusCode::Gone),
-        53 => Some(StatusCode::ProxyReqRefused),
-        59 => Some(StatusCode::BadRequest),
-        60 => Some(StatusCode::ClientCertRequired),
-        61 => Some(StatusCode::TransientCertRequested),
-        62 => Some(StatusCode::AuthorizedCertRequired),
-        63 => Some(StatusCode::CertNotAccepted),
-        64 => Some(StatusCode::FutureCertRejected),
-        65 => Some(StatusCode::ExpiredCertRejected),
-        _ => None
-    };
-
-    code
-}
 
 #[derive(Clone, Copy, PartialEq, Debug)]
 pub enum LineType {
@@ -90,19 +26,19 @@ pub struct GeminiLine {
     pub alt: Option<String>
 }
 
-pub struct ResponseHeader {
-    pub status: StatusCode,
-    pub meta: Option<String>
+pub enum Line {
+    Text(String),
+    Link(String, Option<String>),
+    Preformatted(String),
+    Heading1(String),
+    Heading2(String),
+    Heading3(String),
+    Quote(String),
+    ListItem(String)
 }
 
-pub struct GeminiResponse {
-    pub status: StatusCode,
-    pub meta: Option<String>,
-    pub contents: Option<Vec<u8>>
-}
-
-pub fn parse_gemini_doc(page: &str) -> Vec<GeminiLine> {
-    let mut lines = Vec::<GeminiLine>::new();
+pub fn parse_gemini_doc(page: &str) -> Vec<Line> {
+    let mut lines = Vec::<Line>::new();
     let mut preformatted = false;
 
     let link_regex = Regex::new(r"^=>\s*(\S+)(?:\s+(.*))?").unwrap();
@@ -118,11 +54,7 @@ pub fn parse_gemini_doc(page: &str) -> Vec<GeminiLine> {
                 continue;
             }
             else {
-                lines.push( GeminiLine {
-                    linetype: LineType::Preformatted,
-                    main: Some(line.clone().to_string()),
-                    alt: None
-                });
+                lines.push(Line::Preformatted(line.clone().to_string()));
                 continue;
             }
         }
@@ -143,86 +75,51 @@ pub fn parse_gemini_doc(page: &str) -> Vec<GeminiLine> {
                 alt = Some(name);
             }
 
-            lines.push(GeminiLine {
-                linetype: LineType::Link,
-                main: Some(url),
-                alt: alt
-            }); 
+            lines.push(Line::Link(url, alt));
         }
         else if list_regex.is_match(line) {
             let groups = list_regex.captures(line).unwrap();
             let item = groups.get(1).map_or("".to_string(), |u| u.as_str().to_string());
 
-            lines.push(GeminiLine {
-                linetype: LineType::ListItem,
-                main: Some(item),
-                alt: None
-            });
+            lines.push(Line::ListItem(item));
         }
         else if heading_regex.is_match(line) {
             let groups = heading_regex.captures(line).unwrap();
             let hashes = groups.get(1).unwrap().as_str();
             let level = hashes.len();
 
-            let linetype = match level {
-                1 => LineType::Heading1,
-                2 => LineType::Heading2,
-                3 => LineType::Heading3,
-                _ => LineType::Text
-            };
-
             let s = groups.get(2).map_or("".to_string(), |u| u.as_str().to_string());
 
-            lines.push(GeminiLine {
-                linetype: linetype,
-                main: Some(s),
-                alt: None
-            });
+            match level {
+                1 => {
+                    lines.push(Line::Heading1(s));
+                },
+                2 => {
+                    lines.push(Line::Heading2(s));
+                },
+                3 => {
+                    lines.push(Line::Heading3(s));
+                },
+                _ => {
+                    lines.push(Line::Text(s));
+                }
+            }
         }
         else if quote_regex.is_match(line) {
             let groups = quote_regex.captures(line).unwrap();
             let s = groups.get(1).map_or("".to_string(), |u| u.as_str().to_string());
 
-            lines.push(GeminiLine {
-                linetype: LineType::Quote,
-                main: Some(s),
-                alt: None
-            });
+            lines.push(Line::Quote(s));
         }
         else {
-            lines.push(GeminiLine {
-                linetype: LineType::Text,
-                main: Some(line.clone().to_string()),
-                alt: None
-            });
+            lines.push(Line::Text(line.clone().to_string()));
         }
     }
 
     lines
 }
 
-fn parse_response_header(res: &str) -> Result<ResponseHeader, &str> {
-    let mut iter = res.split_whitespace();
-    let codestr = match iter.next() {
-        Some(c) => c,
-        None => { return Err("Error parsing header"); }
-    };
-    let meta = match iter.next() {
-        Some(m) => m.to_string(),
-        None => { return Err("Error parsing header"); }
-    };
 
-    let codeint = match codestr.parse::<u8>() {
-        Ok(c) => c,
-        Err(_e) => { return Err("Error parsing code"); }
-    };
-    let code = match statuscode_from_u8(codeint) {
-        Some(c) => c,
-        None => { return Err("Status code not known"); }
-    };
-
-    return Ok(ResponseHeader{status: code, meta: Some(meta)});
-}
 
 pub fn is_valid_gemini_url(url: &str) -> bool {
     let url = match Url::parse(url) {
@@ -241,82 +138,7 @@ pub fn is_valid_gemini_url(url: &str) -> bool {
     };
 }
 
-pub fn make_request(request_url: &str) -> Result<GeminiResponse, String> {
-    let url = match Url::parse(request_url) {
-        Ok(u) => { u },
-        Err(_e) => { return Err("Failed parsing URL".to_string()); }
-    };
 
-    let scheme = url.scheme();
-    if scheme != "gemini" {
-        return Err("Scheme not supported".to_string());
-    }
-
-    let host = match url.host_str() {
-        Some(h) => h,
-        None => { return Err("Did not find hostname".to_string()); }
-    };
-
-    let port = match url.port() {
-        Some(p) => p,
-        None => match scheme {
-            "gemini" => 1965,
-            _ => {return Err("No port known for given scheme".to_string())}
-        }
-    };
-
-    let mut builder = SslConnector::builder(SslMethod::tls()).unwrap();
-    builder.set_verify(SslVerifyMode::NONE);
-    let connector = builder.build();
-    let stream = match TcpStream::connect(format!("{}:{}", host, port)) {
-        Ok(s) => s,
-        Err(_) => { return Err("Unable to connect".to_string()); }
-    };
-    let mut stream = connector.connect(host, stream).unwrap();
-
-    match certificates::check_cert(&stream, &host) {
-        Ok(_) => (),
-        Err(_) => return Err("Certificate error".to_string())
-    }
-
-    let mut req = request_url.clone().to_string();
-    req.push_str("\r\n");
-    let req = req.into_bytes();
-    stream.write_all(&req).unwrap();
-
-    let mut buf = vec![0u8; 1029];
-    let read = stream.read(&mut buf).unwrap();
-
-    let header = buf[..read].to_vec();
-    let headerstr = String::from_utf8(header).unwrap();
-
-    if read == 1029 && buf[1027..] != [13, 10] {
-        return Err("Faulty header received".to_string());
-    }
-
-    let header = parse_response_header(&headerstr).unwrap();
-
-    let meta = header.meta;
-
-    if header.status == StatusCode::RedirectPerm || header.status == StatusCode::RedirectTemp {
-        if meta != None {
-            let newurl = meta.unwrap();
-            println!("Redirecting to {}", newurl);
-            return make_request(&newurl);
-        }
-    }
-
-    let mut content_buffer = Vec::<u8>::new();
-    stream.read_to_end(&mut content_buffer).unwrap();
-
-    let response = GeminiResponse {
-        status: header.status,
-        meta: meta,
-        contents: Some(content_buffer)
-    };
-
-    return Ok(response);
-}
 
 pub fn print_gemini_doc(lines: &Vec<GeminiLine>) {
     for line in lines {
@@ -350,6 +172,15 @@ pub fn gemini_doc_as_str(lines: &Vec<GeminiLine>) -> String {
     }
 
     s
+}
+
+pub fn is_gemini_doc(mime: &str) -> bool {
+    let m: mime::Mime = match mime.parse() {
+        Ok(m) => m,
+        Err(_) => {return false;}
+    };
+
+    m.type_() == "text" && m.subtype() == "gemini"
 }
 
 #[cfg(test)]
