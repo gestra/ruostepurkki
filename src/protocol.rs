@@ -88,14 +88,14 @@ pub enum Response {
     CertNotValid(Option<String>)
 }
 
-fn parse_response_header(res: &str) -> Result<ResponseHeader, &str> {
+fn parse_response_header(res: &str) -> Result<ResponseHeader, String> {
     if res.len() < 2 {
-        return Err("No status code in response");
+        return Err("No status code in response".to_string());
     }
 
     let codeint = match res[0..2].parse::<u8>() {
         Ok(c) => c,
-        Err(_) => { return Err("Couldn't parse status code"); }
+        Err(_) => { return Err("Couldn't parse status code".to_string()); }
     };
 
     let meta;
@@ -107,7 +107,7 @@ fn parse_response_header(res: &str) -> Result<ResponseHeader, &str> {
     
     let code = match statuscode_from_u8(codeint) {
         Some(c) => c,
-        None => { return Err("Status code not known"); }
+        None => { return Err(format!("Status code {} not known", codeint)); }
     };
 
     return Ok(ResponseHeader{status: code, meta: meta});
