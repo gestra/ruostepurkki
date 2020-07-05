@@ -27,11 +27,8 @@ pub enum StatusCode {
     ProxyReqRefused         = 53,
     BadRequest              = 59,
     ClientCertRequired      = 60,
-    TransientCertRequested  = 61,
-    AuthorizedCertRequired  = 62,
-    CertNotAccepted         = 63,
-    FutureCertRejected      = 64,
-    ExpiredCertRejected     = 65
+    CertNotAuthorized       = 61,
+    CertNotValid            = 62,
 }
 
 fn statuscode_from_u8(i: u8) -> Option<StatusCode> {
@@ -52,11 +49,8 @@ fn statuscode_from_u8(i: u8) -> Option<StatusCode> {
         53 => Some(StatusCode::ProxyReqRefused),
         59 => Some(StatusCode::BadRequest),
         60 => Some(StatusCode::ClientCertRequired),
-        61 => Some(StatusCode::TransientCertRequested),
-        62 => Some(StatusCode::AuthorizedCertRequired),
-        63 => Some(StatusCode::CertNotAccepted),
-        64 => Some(StatusCode::FutureCertRejected),
-        65 => Some(StatusCode::ExpiredCertRejected),
+        61 => Some(StatusCode::CertNotAuthorized),
+        62 => Some(StatusCode::CertNotValid),
         _ => None
     };
 
@@ -69,75 +63,29 @@ pub struct ResponseHeader {
 }
 
 pub enum Response {
-    Input {
-        prompt: String
-    },
-    SensitiveInput {
-        prompt: String
-    },
+    Input(String),
+    SensitiveInput(String),
 
-    Success {
-        mime: String,
-        contents: Vec<u8>
-    },
+    Success(String, Vec<u8>),
 
-    RedirectTemp {
-        new_url: String
-    },
-    RedirectPerm {
-        new_url: String
-    },
+    RedirectTemp(String),
+    RedirectPerm(String),
 
-    TemporaryFailure {
-        info: Option<String>
-    },
-    ServerUnavailable {
-        info: Option<String>
-    },
-    CgiError {
-        info: Option<String>
-    },
-    ProxyError {
-        info: Option<String>
-    },
-    SlowDown {
-        info: Option<String>
-    },
+    TemporaryFailure(Option<String>),
+    ServerUnavailable(Option<String>),
+    CgiError(Option<String>),
+    ProxyError(Option<String>),
+    SlowDown(Option<String>),
 
-    PermanentFailure {
-        info: Option<String>
-    },
-    NotFound {
-        info: Option<String>
-    },
-    Gone {
-        info: Option<String>
-    },
-    ProxyReqRefused {
-        info: Option<String>
-    },
-    BadRequest {
-        info: Option<String>
-    },
+    PermanentFailure(Option<String>),
+    NotFound(Option<String>),
+    Gone(Option<String>),
+    ProxyReqRefused(Option<String>),
+    BadRequest(Option<String>),
 
-    ClientCertRequired {
-        info: Option<String>
-    },
-    TransientCertRequested {
-        info: Option<String>
-    },
-    AuthorizedCertRequired {
-        info: Option<String>
-    },
-    CertNotAccepted {
-        info: Option<String>
-    },
-    FutureCertRejected {
-        info: Option<String>
-    },
-    ExpiredCertRejected {
-        info: Option<String>
-    },
+    ClientCertRequired(Option<String>),
+    CertNotAuthorized(Option<String>),
+    CertNotValid(Option<String>)
 }
 
 fn parse_response_header(res: &str) -> Result<ResponseHeader, &str> {
@@ -247,9 +195,7 @@ pub fn make_request(request_url: &str) -> Result<Response, String> {
                 None => String::new()
             };
 
-            response = Response::Input {
-                prompt: meta
-            };
+            response = Response::Input(meta);
         },
         StatusCode::SensitiveInput => {
             let meta = match header.meta {
@@ -257,9 +203,7 @@ pub fn make_request(request_url: &str) -> Result<Response, String> {
                 None => String::new()
             };
 
-            response = Response::SensitiveInput {
-                prompt: meta
-            };
+            response = Response::SensitiveInput(meta);
         },
         StatusCode::Success => {
             let mut content_buffer = Vec::<u8>::new();
@@ -270,10 +214,7 @@ pub fn make_request(request_url: &str) -> Result<Response, String> {
                 None => String::new()
             };
 
-            response = Response::Success {
-                mime: metadata,
-                contents: content_buffer
-            }
+            response = Response::Success(metadata, content_buffer);
         },
         StatusCode::RedirectTemp => {
             let meta = match header.meta {
@@ -281,9 +222,7 @@ pub fn make_request(request_url: &str) -> Result<Response, String> {
                 None => { return Err("Server returned status code for redirect but no URL provided".to_string()); }
             };
 
-            response = Response::RedirectTemp {
-                new_url: meta
-            };
+            response = Response::RedirectTemp(meta);
         },
         StatusCode::RedirectPerm => {
             let meta = match header.meta {
@@ -291,90 +230,48 @@ pub fn make_request(request_url: &str) -> Result<Response, String> {
                 None => { return Err("Server returned status code for redirect but no URL provided".to_string()); }
             };
 
-            response = Response::RedirectPerm {
-                new_url: meta
-            };
+            response = Response::RedirectPerm(meta);
         },
         StatusCode::TemporaryFailure => {
-            response = Response::TemporaryFailure {
-                info: header.meta
-            };
+            response = Response::TemporaryFailure(header.meta);
         },
+
         StatusCode::ServerUnavailable => {
-            response = Response::ServerUnavailable {
-                info: header.meta
-            };
+            response = Response::ServerUnavailable(header.meta);
         },
         StatusCode::CgiError => {
-            response = Response::CgiError {
-                info: header.meta
-            };
+            response = Response::CgiError(header.meta);
         },
         StatusCode::ProxyError => {
-            response = Response::ProxyError {
-                info: header.meta
-            };
+            response = Response::ProxyError(header.meta);
         },
         StatusCode::SlowDown => {
-            response = Response::SlowDown {
-                info: header.meta
-            };
+            response = Response::SlowDown(header.meta);
         },
         StatusCode::PermanentFailure => {
-            response = Response::PermanentFailure {
-                info: header.meta
-            };
+            response = Response::PermanentFailure(header.meta);
         },
         StatusCode::NotFound => {
-            response = Response::NotFound {
-                info: header.meta
-            };
+            response = Response::NotFound(header.meta);
         },
         StatusCode::Gone => {
-            response = Response::Gone {
-                info: header.meta
-            };
+            response = Response::Gone(header.meta);
         },
         StatusCode::ProxyReqRefused => {
-            response = Response::ProxyReqRefused {
-                info: header.meta
-            };
+            response = Response::ProxyReqRefused(header.meta);
         },
         StatusCode::BadRequest => {
-            response = Response::BadRequest {
-                info: header.meta
-            };
+            response = Response::BadRequest(header.meta);
         },
         StatusCode::ClientCertRequired => {
-            response = Response::ClientCertRequired {
-                info: header.meta
-            };
+            response = Response::ClientCertRequired(header.meta);
         },
-        StatusCode::TransientCertRequested => {
-            response = Response::TransientCertRequested {
-                info: header.meta
-            };
-        },
-        StatusCode::AuthorizedCertRequired => {
-            response = Response::AuthorizedCertRequired {
-                info: header.meta
-            };
-        },
-        StatusCode::CertNotAccepted => {
-            response = Response::CertNotAccepted {
-                info: header.meta
-            };
-        },
-        StatusCode::FutureCertRejected => {
-            response = Response::FutureCertRejected {
-                info: header.meta
-            };
-        },
-        StatusCode::ExpiredCertRejected => {
-            response = Response::ExpiredCertRejected {
-                info: header.meta
-            };
-        },
+        StatusCode::CertNotAuthorized => {
+            response = Response::CertNotAuthorized(header.meta);
+        }
+        StatusCode::CertNotValid => {
+            response = Response::CertNotValid(header.meta);
+        }
     }
 
     return Ok(response);

@@ -353,7 +353,7 @@ impl TextUI {
                                         }
                                     };
                                     match r {
-                                        Response::Success { mime, contents } => {
+                                        Response::Success(mime, contents) => {
                                             /*
                                             if !document::is_gemini_doc(&mime) {
                                                 self.bottom_line = "Not a gemini document".to_string();
