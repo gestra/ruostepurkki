@@ -26,6 +26,7 @@ pub struct GeminiLine {
     pub alt: Option<String>
 }
 
+#[derive(Clone, PartialEq)]
 pub enum Line {
     Text(String),
     Link(String, Option<String>),
@@ -195,21 +196,17 @@ mod tests {
         let r = parse_gemini_doc(&t);
         assert_eq!(r.len(), 3);
         for (i, line) in r.into_iter().enumerate() {
-            assert!(line.linetype == LineType::Text);
             match i {
                 0 => {
-                    assert!(line.main == Some("This is a text line".to_string()));
-                    assert!(line.alt == None);
+                    assert!(line == Line::Text("This is a text line".to_string()));
                 },
                 1 => {
-                    assert!(line.main == Some("this is one too.".to_string()));
-                    assert!(line.alt == None);
+                    assert!(line == Line::Text("this is one too.".to_string()));
                 },
                 2 => {
-                    assert!(line.main == Some("日本語".to_string()));
-                    assert!(line.alt == None);
+                    assert!(line == Line::Text("日本語".to_string()));
                 },
-                _ => {}
+                _ => {assert!(false)}
             }
         }
     }
@@ -224,25 +221,22 @@ mod tests {
 
         assert_eq!(r.len(), 4);
         for (i, line) in r.into_iter().enumerate() {
-            assert!(line.linetype == LineType::Link);
             match i {
                 0 => {
-                    assert!(line.main == Some("gemini://example.com".to_string()));
-                    assert!(line.alt == Some("Link to example".to_string()));
+                    assert!(line == Line::Link("gemini://example.com".to_string(), Some("Link to example".to_string())));
                 }
                 1 => {
-                    assert!(line.main == Some("gemini://another.site".to_string()));
-                    assert!(line.alt == Some("This one has some more whitespace".to_string()));
+                    assert!(line == Line::Link("gemini://another.site".to_string(), Some("This one has some more whitespace".to_string())));
                 }
                 2 => {
-                    assert!(line.main == Some("gemini://third.one".to_string()));
-                    assert!(line.alt == Some("漢字".to_string()));
+                    assert!(line == Line::Link("gemini://third.one".to_string(), Some("漢字".to_string())));
                 }
                 3 => {
-                    assert!(line.main == Some("gemini://no.name".to_string()));
-                    assert!(line.alt == None);
+                    assert!(line == Line::Link("gemini://no.name".to_string(), None));
                 }
-                _ => {}
+                _ => {
+                    assert!(false);
+                }
             }
         }
     }
@@ -261,21 +255,17 @@ mod tests {
         for (i, line) in r.into_iter().enumerate() {
             match i {
                 0 => {
-                    assert!(line.linetype == LineType::Text);
-                    assert!(line.main == Some("Normal line here".to_string()));
-                    assert!(line.alt == None);
+                    assert!(line == Line::Text("Normal line here".to_string()));
                 }
                 1 => {
-                    assert!(line.linetype == LineType::Preformatted);
-                    assert!(line.main == Some("This is preformatted".to_string()));
-                    assert!(line.alt == None);
+                    assert!(line == Line::Preformatted("This is preformatted".to_string()));
                 }
                 2 => {
-                    assert!(line.linetype == LineType::Text);
-                    assert!(line.main == Some("This is not".to_string()));
-                    assert!(line.alt == None);
+                    assert!(line == Line::Text("This is not".to_string()));
                 }
-                _ => {}
+                _ => {
+                    assert!(false);
+                }
             }
         }
     }
@@ -291,21 +281,17 @@ mod tests {
         for (i, line) in r.into_iter().enumerate() {
             match i {
                 0 => {
-                    assert!(line.linetype == LineType::Heading1);
-                    assert!(line.main == Some("Level 1 heading".to_string()));
-                    assert!(line.alt == None);
+                    assert!(line == Line::Heading1("Level 1 heading".to_string()));
                 }
                 1 => {
-                    assert!(line.linetype == LineType::Heading2);
-                    assert!(line.main == Some("Level 2 heading".to_string()));
-                    assert!(line.alt == None);
+                    assert!(line == Line::Heading2("Level 2 heading".to_string()));
                 }
                 2 => {
-                    assert!(line.linetype == LineType::Heading3);
-                    assert!(line.main == Some("レベル 3 ヘディング".to_string()));
-                    assert!(line.alt == None);
+                    assert!(line == Line::Heading3("レベル 3 ヘディング".to_string()));
                 }
-                _ => {}
+                _ => {
+                    assert!(false);
+                }
             }
         }
     }
@@ -322,26 +308,20 @@ mod tests {
         for (i, line) in r.into_iter().enumerate() {
             match i {
                 0 => {
-                    assert!(line.linetype == LineType::ListItem);
-                    assert!(line.main == Some("First item".to_string()));
-                    assert!(line.alt == None);
+                    assert!(line == Line::ListItem("First item".to_string()));
                 }
                 1 => {
-                    assert!(line.linetype == LineType::ListItem);
-                    assert!(line.main == Some("Second item".to_string()));
-                    assert!(line.alt == None);
+                    assert!(line == Line::ListItem("Second item".to_string()));
                 }
                 2 => {
-                    assert!(line.linetype == LineType::Text);
-                    assert!(line.main == Some("*This is not a list item".to_string()));
-                    assert!(line.alt == None);
+                    assert!(line == Line::Text("*This is not a list item".to_string()));
                 }
                 3 => {
-                    assert!(line.linetype == LineType::ListItem);
-                    assert!(line.main == Some("これは new list".to_string()));
-                    assert!(line.alt == None);
+                    assert!(line == Line::ListItem("これは new list".to_string()));
                 }
-                _ => {}
+                _ => {
+                    assert!(false);
+                }
             }
         }
     }
@@ -356,25 +336,22 @@ mod tests {
 
         assert_eq!(r.len(), 4);
         for (i, line) in r.into_iter().enumerate() {
-            assert!(line.linetype == LineType::Quote);
             match i {
                 0 => {
-                    assert!(line.main == Some("2020".to_string()));
-                    assert!(line.alt == None);
+                    assert!(line == Line::Quote("2020".to_string()));
                 }
                 1 => {
-                    assert!(line.main == Some("quotes as standard".to_string()));
-                    assert!(line.alt == None);
+                    assert!(line == Line::Quote("quotes as standard".to_string()));
                 }
                 2 => {
-                    assert!(line.main == Some("  what about whitespace?".to_string()));
-                    assert!(line.alt == None);
+                    assert!(line == Line::Quote("  what about whitespace?".to_string()));
                 }
                 3 => {
-                    assert!(line.main == Some("錆".to_string()));
-                    assert!(line.alt == None);
+                    assert!(line == Line::Quote("錆".to_string()));
                 }
-                _ => {}
+                _ => {
+                    assert!(false);
+                }
             }
         }
     }
