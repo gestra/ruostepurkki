@@ -113,9 +113,21 @@ fn parse_response_header(res: &str) -> Result<ResponseHeader, String> {
     return Ok(ResponseHeader{status: code, meta: meta});
 }
 
-pub fn make_request(request_url: &str) -> Result<Response, String> {
-    let url = match Url::parse(request_url) {
-        Ok(u) => { u },
+pub fn make_request(raw_url: &str) -> Result<Response, String> {
+    let mut request_url = raw_url;
+    let mut gemini_scheme = "gemini://".to_string();
+    let url = match Url::parse(raw_url) {
+        Ok(u) => u,
+        Err(url::ParseError::RelativeUrlWithoutBase) => {
+            gemini_scheme.push_str(raw_url);
+            match Url::parse(&gemini_scheme) {
+                Ok(u) => {
+                    request_url = &gemini_scheme;
+                    u
+                },
+                Err(_) => { return Err("Failed parsing URL".to_string()); }
+            }
+        }
         Err(_e) => { return Err("Failed parsing URL".to_string()); }
     };
 
