@@ -302,7 +302,7 @@ impl Drop for TextUI {
 
 impl TextUI {
     pub fn init() -> Result<Self> {
-        execute!(stdout(), EnterAlternateScreen);
+        execute!(stdout(), EnterAlternateScreen)?;
         terminal::enable_raw_mode()?;
         execute!(stdout(), terminal::Clear(ClearType::All))?;
         execute!(stdout(), cursor::Hide)?;
@@ -375,7 +375,7 @@ impl TextUI {
     }
 
     fn user_command_input(&mut self) -> std::result::Result<(), String> {
-        let raw_command = get_command_from_user().unwrap();
+        let raw_command = self.get_command_from_user().unwrap();
         let mut print_error = false;
         let mut error_msg = String::new();
 
@@ -540,80 +540,82 @@ impl TextUI {
     
         Ok(())
     }
-}
 
-fn get_command_from_user() -> Result<String> {
-    let size = terminal::size()?;
-
-    queue!(
-        stdout(),
-        MoveTo(0, size.1),
-        terminal::Clear(ClearType::CurrentLine),
-        Print("> "),
-        cursor::Show
-    ).unwrap();
-    stdout().flush()?;
-
-    //terminal::disable_raw_mode()?;
-
-    let mut command = String::new();
-    loop {
-        match read()? {
-            Event::Key(event) => {
-                match event.code {
-                    KeyCode::Esc => {
-                        command.clear();
-                        break;
-                    },
-
-                    KeyCode::Backspace => {
-                        if let Some(c) = command.pop() {
-                            let s = c.to_string();
-                            let l = UnicodeWidthStr::width(&s[..]) as u16;
-                            queue!(
-                                stdout(),
-                                cursor::MoveLeft(l)
-                            )?;
-                            for _ in 0..l {
+    fn get_command_from_user(&self) -> Result<String> {
+        let size = terminal::size()?;
+    
+        queue!(
+            stdout(),
+            MoveTo(0, size.1),
+            terminal::Clear(ClearType::CurrentLine),
+            Print("> "),
+            cursor::Show
+        ).unwrap();
+        stdout().flush()?;
+    
+        //terminal::disable_raw_mode()?;
+    
+        let mut command = String::new();
+        loop {
+            match read()? {
+                Event::Key(event) => {
+                    match event.code {
+                        KeyCode::Esc => {
+                            command.clear();
+                            break;
+                        },
+    
+                        KeyCode::Backspace => {
+                            if let Some(c) = command.pop() {
+                                let s = c.to_string();
+                                let l = UnicodeWidthStr::width(&s[..]) as u16;
                                 queue!(
                                     stdout(),
-                                    Print(' ')
+                                    cursor::MoveLeft(l)
                                 )?;
+                                for _ in 0..l {
+                                    queue!(
+                                        stdout(),
+                                        Print(' ')
+                                    )?;
+                                }
+                                queue!(
+                                    stdout(),
+                                    cursor::MoveLeft(l)
+                                )?;
+                                stdout().flush()?;
                             }
-                            queue!(
+                        },
+    
+                        KeyCode::Enter => {
+                            break;
+                        },
+                        
+                        KeyCode::Char(c) => {
+                            command.push(c);
+                            execute!(
                                 stdout(),
-                                cursor::MoveLeft(l)
+                                Print(c),
                             )?;
-                            stdout().flush()?;
-                        }
-                    },
-
-                    KeyCode::Enter => {
-                        break;
-                    },
-                    
-                    KeyCode::Char(c) => {
-                        command.push(c);
-                        execute!(
-                            stdout(),
-                            Print(c),
-                        )?;
-                    },
-                    _ => {}
-                }
-            },
-            _ => {}
+                        },
+                        _ => {}
+                    }
+                },
+                _ => {}
+            }
         }
+    
+        //terminal::enable_raw_mode()?;
+        execute!(
+            stdout(),
+            cursor::Hide
+        )?;
+    
+        Ok(command)
     }
-
-    //terminal::enable_raw_mode()?;
-    execute!(
-        stdout(),
-        cursor::Hide
-    )?;
-
-    Ok(command)
 }
+
+
 
 fn pretty_wrap(line: &str, width: usize) -> Vec::<String> {
     let mut results = Vec::<String>::new();
