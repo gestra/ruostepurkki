@@ -34,6 +34,7 @@ use document::{
     Line,
 };
 
+#[derive(PartialEq, Debug)]
 enum Command {
     Go(String),
     Quit,
@@ -669,7 +670,7 @@ fn parse_command(s: &str) -> Option<Command> {
     }
 
     let go_re = Regex::new(r"^\s*go? +(.+)").unwrap();
-    let quit_re = Regex::new(r"^\s*qu?i?t?.*").unwrap();
+    let quit_re = Regex::new(r"^\s*q(uit)?( .*)?").unwrap();
     let generic_re = Regex::new(r"^\s*(\S+)").unwrap();
 
     if go_re.is_match(s) {
@@ -689,5 +690,18 @@ fn parse_command(s: &str) -> Option<Command> {
         else {
             return None;
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn command_parser() {
+        assert_eq!(parse_command("go gemini://localhost"), Some(Command::Go("gemini://localhost".to_string())));
+        assert_eq!(parse_command(" q "), Some(Command::Quit));
+        assert_eq!(parse_command("q"), Some(Command::Quit));
+        assert_eq!(parse_command("not a command"), Some(Command::Unknown("not".to_string())));
     }
 }
