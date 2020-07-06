@@ -1,30 +1,7 @@
-extern crate url;
-use url::Url;
-
 extern crate mime;
 
 extern crate regex;
 use regex::Regex;
-
-
-#[derive(Clone, Copy, PartialEq, Debug)]
-pub enum LineType {
-    Text,
-    Link,
-    Preformatted,
-    Heading1,
-    Heading2,
-    Heading3,
-    Quote,
-    ListItem
-}
-
-#[derive(Debug)]
-pub struct GeminiLine {
-    pub linetype: LineType,
-    pub main: Option<String>,
-    pub alt: Option<String>
-}
 
 #[derive(Clone, PartialEq)]
 pub enum Line {
@@ -118,61 +95,6 @@ pub fn parse_gemini_doc(page: &str) -> Vec<Line> {
     }
 
     lines
-}
-
-
-
-pub fn is_valid_gemini_url(url: &str) -> bool {
-    let url = match Url::parse(url) {
-        Ok(u) => u,
-        Err(_) => { return false }
-    };
-
-    let scheme = url.scheme();
-    if scheme != "gemini" {
-        return false;
-    }
-
-    match url.host_str() {
-        Some(_) => {return true},
-        None => { return false; }
-    };
-}
-
-
-
-pub fn print_gemini_doc(lines: &Vec<GeminiLine>) {
-    for line in lines {
-        match line.linetype {
-            LineType::Text => println!("{}", line.main.as_ref().unwrap()),
-            LineType::Link => println!("Link: {} {}", line.main.as_ref().unwrap(), line.alt.as_ref().unwrap()),
-            LineType::Quote => println!(">{}", line.main.as_ref().unwrap()),
-            LineType::ListItem => println!("* {}", line.main.as_ref().unwrap()),
-            LineType::Heading1 => println!("Heading1: {}", line.main.as_ref().unwrap()),
-            LineType::Heading2 => println!("Heading2: {}", line.main.as_ref().unwrap()),
-            LineType::Heading3 => println!("Heading3: {}", line.main.as_ref().unwrap()),
-            LineType::Preformatted => println!("Preformatted: {}", line.main.as_ref().unwrap()),
-        };
-    }
-}
-
-pub fn gemini_doc_as_str(lines: &Vec<GeminiLine>) -> String {
-    let mut s = String::new();
-
-    for line in lines {
-        match line.linetype {
-            LineType::Text => s += &format!("{}\n", line.main.as_ref().unwrap()),
-            LineType::Link => s += &format!("Link: {} {}\n", line.main.as_ref().unwrap(), line.alt.as_ref().unwrap()),
-            LineType::Quote => s += &format!(">{}\n", line.main.as_ref().unwrap()),
-            LineType::ListItem => s += &format!("* {}\n", line.main.as_ref().unwrap()),
-            LineType::Heading1 => s += &format!("Heading1: {}\n", line.main.as_ref().unwrap()),
-            LineType::Heading2 => s += &format!("Heading2: {}\n", line.main.as_ref().unwrap()),
-            LineType::Heading3 => s += &format!("Heading3: {}\n", line.main.as_ref().unwrap()),
-            LineType::Preformatted => s += &format!("Preformatted: {}\n", line.main.as_ref().unwrap()),
-        };
-    }
-
-    s
 }
 
 pub fn is_gemini_doc(mime: &str) -> bool {

@@ -27,7 +27,6 @@ use regex::Regex;
 
 use crate::protocol;
 use protocol::{
-    StatusCode,
     Response
 };
 
@@ -81,32 +80,6 @@ impl ContentContainer {
             scroll_row: 0,
             scroll_column: 0
         };
-
-        new_container
-    }
-
-    pub fn from_lines(c: Vec<PrintableLine>) -> ContentContainer {
-        let size = terminal::size().unwrap();
-        let top_margin = 1;
-        let bottom_margin = 1;
-        let left_margin = 0;
-        let right_margin = 0;
-
-        let mut new_container = ContentContainer {
-            lines: c,
-            rendered: Vec::<String>::new(),
-            content_width: 0,
-            width: size.0 as usize - (left_margin + right_margin),
-            height: size.1 as usize - (top_margin + bottom_margin),
-            top_margin: top_margin,
-            bottom_margin: bottom_margin,
-            left_margin: left_margin,
-            right_margin: right_margin,
-            scroll_row: 0,
-            scroll_column: 0
-        };
-
-        new_container.render();
 
         new_container
     }
@@ -278,7 +251,7 @@ impl ContentContainer {
                 }
             }
         }
-        
+
         self.scroll_row = 0;
         self.scroll_column = 0;
         self.lines = contents;
@@ -320,15 +293,6 @@ impl GeminiHistory {
     pub fn get_current_url(&self) -> Option<String> {
         if self.urlhistory.len() > self.current {
             Some(self.urlhistory[self.current].to_string())
-        } else {
-            None
-        }
-    }
-
-    pub fn get_current_contents(&self) -> Option<&TextPage> {
-        if self.urlhistory.len() > self.current {
-            let url = &self.urlhistory[self.current];
-            self.cache.get(url)
         } else {
             None
         }
