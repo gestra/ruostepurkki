@@ -232,6 +232,8 @@ impl ContentContainer {
         }
 
         self.lines = contents;
+        self.scroll_row = 0;
+        self.scroll_column = 0;
         self.render();
     }
 
@@ -276,7 +278,9 @@ impl ContentContainer {
                 }
             }
         }
-
+        
+        self.scroll_row = 0;
+        self.scroll_column = 0;
         self.lines = contents;
         self.render();
     }
@@ -286,7 +290,6 @@ enum TextPage {
     Gemini(Vec<document::Line>),
     Plain(String)
 }
-
 
 struct GeminiHistory {
     urlhistory: Vec<String>,
@@ -306,11 +309,45 @@ impl GeminiHistory {
     pub fn insert(&mut self, url: String, page: TextPage) {
         self.urlhistory.truncate(self.current+1);
         self.urlhistory.push(url.clone());
+        self.current = self.urlhistory.len()-1;
         self.cache.insert(url, page);
     }
 
     pub fn get_from_cache(&self, url: String) -> Option<&TextPage> {
         self.cache.get(&url)
+    }
+
+    pub fn get_current_url(&self) -> Option<String> {
+        if self.urlhistory.len() > self.current {
+            Some(self.urlhistory[self.current].to_string())
+        } else {
+            None
+        }
+    }
+
+    pub fn get_current_contents(&self) -> Option<&TextPage> {
+        if self.urlhistory.len() > self.current {
+            let url = &self.urlhistory[self.current];
+            self.cache.get(url)
+        } else {
+            None
+        }
+    }
+
+    pub fn go_back(&mut self) -> bool {
+        if self.current > 0 {
+            self.current -= 1;
+            return true;
+        }
+        return false;
+    }
+
+    pub fn go_forwards(&mut self) -> bool {
+        if self.current < self.urlhistory.len()-1 {
+            self.current +=1;
+            return true;
+        }
+        return false;
     }
 }
 
@@ -401,6 +438,12 @@ impl TextUI {
             KeyCode::Char(' ') => {
                 self.user_command_input()?;
             },
+            KeyCode::Char('b') => {
+                self.go_back()?;
+            },
+            KeyCode::Char('f') => {
+                self.go_forwards()?;
+            },
             KeyCode::Esc => {
                 self.quit = true;
                 return Ok(());
@@ -455,6 +498,8 @@ impl TextUI {
                     self.container.set_contents_text(s);
                 }
             }
+
+            self.redraw_window()?;
 
             return Ok(());
         }
@@ -664,6 +709,26 @@ impl TextUI {
         )?;
     
         Ok(command)
+    }
+
+    fn go_back(&mut self) -> std::result::Result<(), String> {
+        if self.history.go_back() == true {
+            if let Some(url) = self.history.get_current_url() {
+                self.command_go(&url)?;
+            }
+        }
+
+        Ok(())
+    }
+
+    fn go_forwards(&mut self) -> std::result::Result<(), String> {
+        if self.history.go_forwards() == true {
+            if let Some(url) = self.history.get_current_url() {
+                self.command_go(&url)?;
+            }
+        }
+
+        Ok(())
     }
 }
 
