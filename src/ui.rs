@@ -1,5 +1,7 @@
 use std::io::{stdout, Write};
 
+use std::collections::HashMap;
+
 extern crate crossterm;
 use crossterm::{
     execute, queue,
@@ -233,13 +235,13 @@ impl ContentContainer {
         self.render();
     }
 
-    pub fn set_contents_gemini(&mut self, lines: Vec<document::Line>) {
+    pub fn set_contents_gemini(&mut self, lines: &Vec<document::Line>) {
         let mut contents = Vec::<PrintableLine>::new();
         for l in lines {
             match l {
                 Line::Preformatted(s) => {
                     contents.push(PrintableLine {
-                        s: s,
+                        s: s.to_string(),
                         wrapped: false
                     });
                 },
@@ -268,7 +270,7 @@ impl ContentContainer {
                 Line::Quote(s) |
                 Line::ListItem(s) => {
                     contents.push(PrintableLine {
-                        s: s,
+                        s: s.to_string(),
                         wrapped: false
                     });
                 }
@@ -280,10 +282,44 @@ impl ContentContainer {
     }
 }
 
+enum TextPage {
+    Gemini(Vec<document::Line>),
+    Plain(String)
+}
+
+
+struct GeminiHistory {
+    urlhistory: Vec<String>,
+    current: usize,
+    cache: HashMap<String, TextPage>
+}
+
+impl GeminiHistory {
+    pub fn new() -> Self {
+        GeminiHistory {
+            urlhistory: Vec::new(),
+            current: 0,
+            cache: HashMap::new()
+        }
+    }
+
+    pub fn insert(&mut self, url: String, page: TextPage) {
+        self.urlhistory.truncate(self.current+1);
+        self.urlhistory.push(url.clone());
+        self.cache.insert(url, page);
+    }
+
+    pub fn get_from_cache(&self, url: String) -> Option<&TextPage> {
+        self.cache.get(&url)
+    }
+}
+
 pub struct TextUI {
     top_line: String,
     container: ContentContainer,
     bottom_line: String,
+
+    history: GeminiHistory,
 
     quit: bool
 }
@@ -313,6 +349,7 @@ impl TextUI {
             top_line: String::new(),
             container: container,
             bottom_line: String::new(),
+            history: GeminiHistory::new(),
             quit: false
         })
     }
@@ -409,6 +446,19 @@ impl TextUI {
     }
 
     fn command_go(&mut self, url: &str) -> std::result::Result<(), String> {
+        if let Some(cached) = self.history.get_from_cache((&url).to_string()) {
+            match cached {
+                TextPage::Gemini(v) => {
+                    self.container.set_contents_gemini(v);
+                }
+                TextPage::Plain(s) => {
+                    self.container.set_contents_text(s);
+                }
+            }
+
+            return Ok(());
+        }
+
         let r = match protocol::make_request(&url) {
             Ok(r) => r,
             Err(e) => {
@@ -428,10 +478,12 @@ impl TextUI {
                 let raw = String::from_utf8(contents).unwrap();
 
                 if !document::is_gemini_doc(&mime) {
+                    self.history.insert(url.to_string(), TextPage::Plain(raw.to_string()));
                     self.container.set_contents_text(&raw);
                 } else {
                     let doc = document::parse_gemini_doc(&raw);
-                    self.container.set_contents_gemini(doc);
+                    self.history.insert(url.to_string(), TextPage::Gemini(doc.clone()));
+                    self.container.set_contents_gemini(&doc);
                 }
                 self.redraw_window()?;
             },
@@ -614,6 +666,7 @@ impl TextUI {
         Ok(command)
     }
 }
+
 
 
 
