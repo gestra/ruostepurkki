@@ -25,6 +25,9 @@ use unicode_width::UnicodeWidthStr;
 extern crate regex;
 use regex::Regex;
 
+extern crate url;
+use url::Url;
+
 use crate::protocol;
 use protocol::{
     Response
@@ -35,10 +38,12 @@ use document::{
     Line,
 };
 
+
 #[derive(PartialEq, Debug)]
 enum Command {
     Go(String),
     Quit,
+    Link(usize),
     Unknown(String)
 }
 
@@ -60,7 +65,8 @@ struct ContentContainer {
     left_margin: usize,
     right_margin: usize,
     scroll_row: usize,
-    scroll_column: usize
+    scroll_column: usize,
+    links: Option<Vec<String>>
 }
 
 impl ContentContainer {
@@ -78,7 +84,8 @@ impl ContentContainer {
             left_margin: 0,
             right_margin: 0,
             scroll_row: 0,
-            scroll_column: 0
+            scroll_column: 0,
+            links: None
         };
 
         new_container
@@ -212,6 +219,7 @@ impl ContentContainer {
 
     pub fn set_contents_gemini(&mut self, lines: &Vec<document::Line>) {
         let mut contents = Vec::<PrintableLine>::new();
+        let mut links = Vec::<String>::new();
         for l in lines {
             match l {
                 Line::Preformatted(s) => {
@@ -222,17 +230,19 @@ impl ContentContainer {
                 },
 
                 Line::Link(url, alt) => {
+                    links.push(url.to_string());
+                    let num = links.len();
                     match alt {
                         Some(a) => {
                             contents.push(PrintableLine {
-                                s: format!("=> {}", a),
-                                wrapped: false
+                                s: format!("[{}] => {}", num, a),
+                                wrapped: true
                             });
                         },
                         None => {
                             contents.push(PrintableLine {
-                                s: format!("=> {}", url),
-                                wrapped: false
+                                s: format!("[{}] => {}",num, url),
+                                wrapped: true
                             });
                         }
                     }
@@ -246,12 +256,13 @@ impl ContentContainer {
                 Line::ListItem(s) => {
                     contents.push(PrintableLine {
                         s: s.to_string(),
-                        wrapped: false
+                        wrapped: true
                     });
                 }
             }
         }
 
+        self.links = Some(links);
         self.scroll_row = 0;
         self.scroll_column = 0;
         self.lines = contents;
@@ -433,6 +444,28 @@ impl TextUI {
                 return Ok(());
             },
 
+            Some(Command::Link(num)) => {
+                let mut url: Option<String> = None;
+                match &self.container.links {
+                    Some(v) => {
+                        if v.len() >= num {
+                            url = Some(v[num-1].to_string());
+                        }
+                    },
+                    None => {}
+                }
+                match url {
+                    Some(u) => {
+                        let cur = self.history.get_current_url().unwrap_or("".to_string());
+                        let parsed = parse_gemini_link(&u, &cur)?; 
+                        self.bottom_line = format!("Following link {} to {}", num, u);
+                        self.redraw_window()?;
+                        self.command_go(parsed.as_str())?;                 
+                    }
+                    None => {}
+                }
+            },
+
             Some(Command::Unknown(c)) => {
                 print_error = true;
                 error_msg = format!("Unknown command: {}", c);
@@ -467,7 +500,6 @@ impl TextUI {
 
             return Ok(());
         }
-
         let r = match protocol::make_request(&url) {
             Ok(r) => r,
             Err(e) => {
@@ -519,7 +551,8 @@ impl TextUI {
         queue!(
             stdout(),
             MoveTo(0, size.1),
-            Print(&self.bottom_line)
+            Print(&self.bottom_line),
+            cursor::Show
         ).unwrap();
         stdout().flush().unwrap();
 
@@ -528,9 +561,19 @@ impl TextUI {
                 Event::Key(event) => {
                     match event.code {
                         KeyCode::Char('y') => {
+                            execute!(
+                                stdout(),
+                                cursor::Hide
+                            ).unwrap();
+                            self.bottom_line = "".to_string();
                             return Ok(true);
                         }
                         KeyCode::Char('n') | KeyCode::Esc => {
+                            execute!(
+                                stdout(),
+                                cursor::Hide,
+                            ).unwrap();
+                            self.bottom_line = "".to_string();
                             return Ok(false);
                         }
                         _ => {}
@@ -696,9 +739,6 @@ impl TextUI {
     }
 }
 
-
-
-
 fn pretty_wrap(line: &str, width: usize) -> Vec::<String> {
     let mut results = Vec::<String>::new();
 
@@ -755,6 +795,7 @@ fn parse_command(s: &str) -> Option<Command> {
 
     let go_re = Regex::new(r"^\s*go? +(.+)").unwrap();
     let quit_re = Regex::new(r"^\s*q(uit)?( .*)?").unwrap();
+    let link_re = Regex::new(r"^\s*(\d+)\s*").unwrap();
     let generic_re = Regex::new(r"^\s*(\S+)").unwrap();
 
     if go_re.is_match(s) {
@@ -764,6 +805,14 @@ fn parse_command(s: &str) -> Option<Command> {
     }
     else if quit_re.is_match(s) {
         return Some(Command::Quit);
+    } else if link_re.is_match(s) {
+        let groups = link_re.captures(s).unwrap();
+        if let Some(numstr) = groups.get(1) {
+            if let Ok(num) = numstr.as_str().parse::<usize>() {
+                return Some(Command::Link(num));
+            }
+        }
+        Some(Command::Unknown("".to_string()))
     }
     else {
         if generic_re.is_match(s) {
@@ -777,6 +826,25 @@ fn parse_command(s: &str) -> Option<Command> {
     }
 }
 
+fn parse_gemini_link(url: &str, base: &str) -> std::result::Result<url::Url, String> {
+    match Url::parse(url) {
+        Ok(u) => { return Ok(u); },
+        Err(_) => {}
+    }
+
+    match Url::parse(base) {
+        Ok(u) => {
+            match u.join(url) {
+                Ok(v) => { return Ok(v); },
+                Err(_) => {}
+            }
+        }
+        Err(_) => {}
+    }
+
+    Err("Could not parse URL".to_string())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -787,5 +855,7 @@ mod tests {
         assert_eq!(parse_command(" q "), Some(Command::Quit));
         assert_eq!(parse_command("q"), Some(Command::Quit));
         assert_eq!(parse_command("not a command"), Some(Command::Unknown("not".to_string())));
+        assert_eq!(parse_command("2"), Some(Command::Link(2)));
+        assert_eq!(parse_command(" 17 "), Some(Command::Link(17)));
     }
 }
